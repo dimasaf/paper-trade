@@ -16,7 +16,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from paper_trade.config import Settings
 from paper_trade.health import (
-    ComponentHealth,
+    HealthComponents,
     HealthService,
     RuntimeHealthService,
     StartupHealthService,
@@ -31,7 +31,7 @@ class HealthResponse(BaseModel):
     status: str
     checked_at: str
     correlation_id: str
-    components: dict[str, ComponentHealth]
+    components: HealthComponents
 
 
 def create_app(

@@ -2,6 +2,14 @@
 
 import { useEffect, useState } from "react";
 
+const healthComponentNames = [
+  "application",
+  "database",
+  "redis",
+  "worker",
+] as const;
+
+type HealthComponentName = (typeof healthComponentNames)[number];
 type ComponentState = "ready" | "unavailable";
 
 type ComponentHealth = {
@@ -13,15 +21,19 @@ type HealthDocument = {
   status: "ready" | "degraded";
   checked_at: string;
   correlation_id: string;
-  components: Record<string, ComponentHealth>;
+  components: Record<HealthComponentName, ComponentHealth>;
 };
 
-const componentLabels: Record<string, string> = {
+const componentLabels: Record<HealthComponentName, string> = {
   application: "Application",
   database: "PostgreSQL",
   redis: "Redis",
   worker: "ARQ worker",
 };
+
+const componentEntries = healthComponentNames.map(
+  (name) => [name, componentLabels[name]] as const,
+);
 
 function displayStatus(status: "ready" | "degraded" | ComponentState): string {
   if (status === "ready") return "Ready";
@@ -33,7 +45,7 @@ export default function OverviewPage() {
   const [health, setHealth] = useState<HealthDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
   const unavailableComponents = health
-    ? Object.entries(componentLabels).filter(
+    ? componentEntries.filter(
         ([name]) => health.components[name]?.status !== "ready",
       )
     : [];
@@ -132,7 +144,7 @@ export default function OverviewPage() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           {health
-            ? Object.entries(componentLabels).map(([name, label]) => {
+            ? componentEntries.map(([name, label]) => {
                 const component = health.components[name] ?? {
                   status: "unavailable" as const,
                   message: "No health result was returned",

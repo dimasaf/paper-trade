@@ -1,16 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const readyHealth = {
-  status: "ready",
-  checked_at: "2026-09-28T08:00:00Z",
-  correlation_id: "browser-test",
-  components: {
-    application: { status: "ready", message: "API is serving requests" },
-    database: { status: "ready", message: "PostgreSQL accepted a query" },
-    redis: { status: "ready", message: "Redis responded to ping" },
-    worker: { status: "ready", message: "ARQ heartbeat is current" },
-  },
-};
+import { healthComponentNames, readyHealth } from "./health-fixture";
 
 test("Overview shows every ready workspace dependency", async ({ page }) => {
   await page.route("**/health", async (route) => {
@@ -23,7 +13,7 @@ test("Overview shows every ready workspace dependency", async ({ page }) => {
     page.getByRole("heading", { name: "Research workspace" }),
   ).toBeVisible();
   await expect(page.getByTestId("overall-status")).toHaveText("Ready");
-  for (const component of ["application", "database", "redis", "worker"]) {
+  for (const component of healthComponentNames) {
     await expect(page.getByTestId(`${component}-status`)).toHaveText("Ready");
   }
 });

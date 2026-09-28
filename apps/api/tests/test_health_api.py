@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -50,6 +51,12 @@ class SecretFailureProbe:
         raise RuntimeError("postgresql://admin:super-secret@database/paper_trade")
 
 
+class NeverReturningProbe:
+    async def check(self) -> str:
+        await asyncio.Future()
+        raise AssertionError("unreachable")
+
+
 def test_health_degrades_failed_dependency_without_leaking_the_failure() -> None:
     health_service = RuntimeHealthService(
         database=SecretFailureProbe(),
@@ -71,6 +78,26 @@ def test_health_degrades_failed_dependency_without_leaking_the_failure() -> None
         "worker": {"status": "ready", "message": "dependency accepted a probe"},
     }
     assert "super-secret" not in response.text
+
+
+def test_health_bounds_a_nonresponsive_dependency() -> None:
+    health_service = RuntimeHealthService(
+        database=NeverReturningProbe(),
+        redis=ReadyProbe(),
+        worker=ReadyProbe(),
+        probe_timeout_seconds=0.01,
+        now=lambda: datetime(2026, 9, 28, 8, 45, tzinfo=timezone.utc),
+    )
+    client = TestClient(create_app(health_service=health_service))
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "degraded"
+    assert response.json()["components"]["database"] == {
+        "status": "unavailable",
+        "message": "Database probe failed",
+    }
 
 
 def test_request_log_includes_correlation_id_without_authorization_secret(caplog: object) -> None:
