@@ -27,7 +27,7 @@ const defaultConfiguration = {
     },
   },
   cluster: {
-    minimum_independent_wallets: 3,
+    minimum_contributing_independent_wallets: 3,
     window_seconds: 300,
     minimum_average_wallet_score: 80,
   },
@@ -37,7 +37,7 @@ const defaultConfiguration = {
     cooldown_seconds: 900,
     score_weights: {
       wallet_quality: 25,
-      independent_wallets: 20,
+      contributing_independent_wallets: 20,
       token_risk: 20,
       liquidity: 10,
       entry_quality: 10,
@@ -129,7 +129,7 @@ test("Settings displays, edits, and versions research assumptions", async ({
   }
 
   const changed = structuredClone(defaultConfiguration);
-  changed.cluster.minimum_independent_wallets = 4;
+  changed.cluster.minimum_contributing_independent_wallets = 4;
   await page
     .getByLabel("Research configuration JSON")
     .fill(JSON.stringify(changed, null, 2));
@@ -155,6 +155,7 @@ test("Settings shows actionable validation errors without creating a version", a
         json: {
           detail: [
             {
+              loc: ["body", "configuration", "signal"],
               msg: "Value error, watch_score must be lower than paper_buy_score",
             },
           ],
@@ -166,12 +167,18 @@ test("Settings shows actionable validation errors without creating a version", a
   });
 
   await page.goto("/settings");
+  const invalid = structuredClone(defaultConfiguration);
+  invalid.signal.watch_score = 90;
+  await page
+    .getByLabel("Research configuration JSON")
+    .fill(JSON.stringify(invalid, null, 2));
   await page.getByRole("button", { name: "Save new version" }).click();
 
   await expect(
-    page
-      .getByRole("alert")
-      .filter({ hasText: "watch_score must be lower than paper_buy_score" }),
+    page.getByRole("alert").filter({
+      hasText:
+        "configuration.signal: Value error, watch_score must be lower than paper_buy_score",
+    }),
   ).toBeVisible();
   await expect(page.getByText("Active version 1")).toBeVisible();
 });

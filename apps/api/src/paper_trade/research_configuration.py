@@ -2,10 +2,10 @@
 
 import json
 from datetime import datetime, timezone
-from typing import Callable, Literal, Protocol
+from typing import Annotated, Callable, Literal, Optional, Protocol
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -15,15 +15,31 @@ class ConfigurationModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+LaunchSource = Literal[
+    "PUMP_FUN",
+    "PUMP_SWAP",
+    "RAYDIUM_LAUNCHLAB",
+    "METEORA_DBC",
+    "JUPITER_STUDIO",
+]
+PositiveInteger = Annotated[int, Field(gt=0)]
+PositiveNumber = Annotated[float, Field(gt=0)]
+
+
+def default_launch_sources() -> list[LaunchSource]:
+    return [
+        "PUMP_FUN",
+        "PUMP_SWAP",
+        "RAYDIUM_LAUNCHLAB",
+        "METEORA_DBC",
+        "JUPITER_STUDIO",
+    ]
+
+
 class TokenSettings(ConfigurationModel):
-    launch_sources: list[str] = Field(
-        default_factory=lambda: [
-            "PUMP_FUN",
-            "PUMP_SWAP",
-            "RAYDIUM_LAUNCHLAB",
-            "METEORA_DBC",
-            "JUPITER_STUDIO",
-        ]
+    launch_sources: list[LaunchSource] = Field(
+        default_factory=default_launch_sources,
+        min_length=1,
     )
     require_pool: bool = True
     minimum_liquidity_usd: float = Field(default=10_000, ge=0)
@@ -32,9 +48,24 @@ class TokenSettings(ConfigurationModel):
     winner_initial_market_cap_min_usd: float = Field(default=10_000, ge=0)
     winner_initial_market_cap_max_usd: float = Field(default=500_000, gt=0)
     winner_peak_market_cap_min_usd: float = Field(default=1_000_000, gt=0)
-    entry_market_cap_buckets_usd: list[float] = Field(
-        default_factory=lambda: [50_000.0, 100_000.0, 250_000.0, 500_000.0]
+    entry_market_cap_buckets_usd: list[PositiveNumber] = Field(
+        default_factory=lambda: [50_000.0, 100_000.0, 250_000.0, 500_000.0],
+        min_length=1,
     )
+
+    @field_validator("launch_sources")
+    @classmethod
+    def validate_launch_sources(cls, sources: list[LaunchSource]) -> list[LaunchSource]:
+        if len(sources) != len(set(sources)):
+            raise ValueError("launch_sources must not contain duplicates")
+        return sources
+
+    @field_validator("entry_market_cap_buckets_usd")
+    @classmethod
+    def validate_entry_market_cap_buckets(cls, buckets: list[float]) -> list[float]:
+        if any(left >= right for left, right in zip(buckets, buckets[1:])):
+            raise ValueError("entry_market_cap_buckets_usd must be strictly increasing")
+        return buckets
 
     @model_validator(mode="after")
     def validate_winner_market_cap_range(self) -> "TokenSettings":
@@ -74,22 +105,42 @@ class WalletScoreWeights(ConfigurationModel):
 class WalletSettings(ConfigurationModel):
     minimum_score: float = Field(default=80, ge=0, le=100)
     minimum_trades: int = Field(default=20, ge=1)
-    copyability_delays_ms: list[int] = Field(
-        default_factory=lambda: [500, 1000, 2000, 3000, 5000, 10000]
+    copyability_delays_ms: list[PositiveInteger] = Field(
+        default_factory=lambda: [500, 1000, 2000, 3000, 5000, 10000],
+        min_length=1,
     )
-    copyability_sizes_sol: list[float] = Field(default_factory=lambda: [0.1, 0.25, 0.5, 1.0, 2.0])
+    copyability_sizes_sol: list[PositiveNumber] = Field(
+        default_factory=lambda: [0.1, 0.25, 0.5, 1.0, 2.0],
+        min_length=1,
+    )
     score_weights: WalletScoreWeights = Field(default_factory=WalletScoreWeights)
+
+    @field_validator("copyability_delays_ms")
+    @classmethod
+    def validate_copyability_delays(cls, delays: list[int]) -> list[int]:
+        if any(left >= right for left, right in zip(delays, delays[1:])):
+            raise ValueError("copyability_delays_ms must be strictly increasing")
+        return delays
+
+    @field_validator("copyability_sizes_sol")
+    @classmethod
+    def validate_copyability_sizes(cls, sizes: list[float]) -> list[float]:
+        if len(sizes) != len(set(sizes)):
+            raise ValueError("copyability_sizes_sol must not contain duplicates")
+        if sizes != sorted(sizes):
+            raise ValueError("copyability_sizes_sol must be increasing")
+        return sizes
 
 
 class ClusterSettings(ConfigurationModel):
-    minimum_independent_wallets: int = Field(default=3, ge=2)
+    minimum_contributing_independent_wallets: int = Field(default=3, ge=2)
     window_seconds: int = Field(default=300, ge=1)
     minimum_average_wallet_score: float = Field(default=80, ge=0, le=100)
 
 
 class SignalScoreWeights(ConfigurationModel):
     wallet_quality: float = Field(default=25, ge=0, le=100)
-    independent_wallets: float = Field(default=20, ge=0, le=100)
+    contributing_independent_wallets: float = Field(default=20, ge=0, le=100)
     token_risk: float = Field(default=20, ge=0, le=100)
     liquidity: float = Field(default=10, ge=0, le=100)
     entry_quality: float = Field(default=10, ge=0, le=100)
@@ -101,7 +152,7 @@ class SignalScoreWeights(ConfigurationModel):
         total = sum(
             (
                 self.wallet_quality,
-                self.independent_wallets,
+                self.contributing_independent_wallets,
                 self.token_risk,
                 self.liquidity,
                 self.entry_quality,
@@ -155,7 +206,8 @@ class RiskSettings(ConfigurationModel):
             PartialTakeProfit(gain_percent=25, sell_percent=25),
             PartialTakeProfit(gain_percent=50, sell_percent=25),
             PartialTakeProfit(gain_percent=100, sell_percent=25),
-        ]
+        ],
+        min_length=1,
     )
     trailing_stop_percent: float = Field(default=15, gt=0, le=100)
     smart_wallet_sell_pressure_percent: float = Field(default=60, ge=0, le=100)
@@ -166,6 +218,9 @@ class RiskSettings(ConfigurationModel):
 
     @model_validator(mode="after")
     def validate_partial_exits(self) -> "RiskSettings":
+        gains = [rule.gain_percent for rule in self.partial_take_profits]
+        if any(left >= right for left, right in zip(gains, gains[1:])):
+            raise ValueError("partial take-profit gains must be strictly increasing")
         if sum(rule.sell_percent for rule in self.partial_take_profits) > 100:
             raise ValueError("partial take-profit sell percentages must not exceed 100")
         return self
@@ -209,6 +264,9 @@ class ResearchConfigurationStore(Protocol):
     async def list_versions(self) -> list[VersionedResearchConfiguration]:
         """Return every immutable version, newest first."""
 
+    async def get_version(self, version: int) -> Optional[VersionedResearchConfiguration]:
+        """Return one immutable version when it exists."""
+
     async def create(self, configuration: ResearchConfiguration) -> VersionedResearchConfiguration:
         """Persist and activate a new immutable version."""
 
@@ -245,6 +303,21 @@ class PostgresResearchConfigurationStore:
                 )
             )
             return [self._from_row(row) for row in result.mappings()]
+
+    async def get_version(self, version: int) -> Optional[VersionedResearchConfiguration]:
+        async with self._engine.connect() as connection:
+            result = await connection.execute(
+                text(
+                    """
+                    SELECT id, version, created_at, configuration
+                    FROM research_configuration_versions
+                    WHERE version = :version
+                    """
+                ),
+                {"version": version},
+            )
+            row = result.mappings().one_or_none()
+            return self._from_row(row) if row is not None else None
 
     async def create(self, configuration: ResearchConfiguration) -> VersionedResearchConfiguration:
         identifier = uuid4()
@@ -310,6 +383,9 @@ class InMemoryResearchConfigurationStore:
 
     async def list_versions(self) -> list[VersionedResearchConfiguration]:
         return list(reversed(self._versions))
+
+    async def get_version(self, version: int) -> Optional[VersionedResearchConfiguration]:
+        return next((item for item in self._versions if item.version == version), None)
 
     async def create(self, configuration: ResearchConfiguration) -> VersionedResearchConfiguration:
         version = VersionedResearchConfiguration(

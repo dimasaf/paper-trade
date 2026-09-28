@@ -137,6 +137,21 @@ def create_app(
     async def research_configuration_history() -> list[VersionedResearchConfiguration]:
         return await configuration_store().list_versions()
 
+    @app.get(
+        "/research-configurations/{version}",
+        response_model=VersionedResearchConfiguration,
+    )
+    async def research_configuration_version(
+        version: int,
+    ) -> VersionedResearchConfiguration:
+        configuration = await configuration_store().get_version(version)
+        if configuration is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Research configuration version {version} was not found",
+            )
+        return configuration
+
     @app.post(
         "/research-configurations",
         response_model=VersionedResearchConfiguration,

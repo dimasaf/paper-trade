@@ -33,6 +33,7 @@ Settings exposes the active Token, Wallet, cluster, Signal, Paper Trading, risk,
 
 - `GET /research-configurations/active`
 - `GET /research-configurations`
+- `GET /research-configurations/{version}`
 - `POST /research-configurations`
 
 PostgreSQL seeds version 1 on a fresh installation and rejects updates or deletes to stored versions.

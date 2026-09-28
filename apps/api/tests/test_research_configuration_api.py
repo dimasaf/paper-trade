@@ -87,7 +87,7 @@ def test_saving_creates_an_immutable_version_and_preserves_history() -> None:
     )
     original = client.get("/research-configurations/active").json()
     changed = original["configuration"]
-    changed["cluster"]["minimum_independent_wallets"] = 4
+    changed["cluster"]["minimum_contributing_independent_wallets"] = 4
 
     create_response = client.post("/research-configurations", json={"configuration": changed})
     history_response = client.get("/research-configurations")
@@ -95,12 +95,20 @@ def test_saving_creates_an_immutable_version_and_preserves_history() -> None:
     assert create_response.status_code == 201
     assert create_response.json()["id"] == "00000000-0000-0000-0000-000000000002"
     assert create_response.json()["version"] == 2
-    assert create_response.json()["configuration"]["cluster"]["minimum_independent_wallets"] == 4
+    assert (
+        create_response.json()["configuration"]["cluster"][
+            "minimum_contributing_independent_wallets"
+        ]
+        == 4
+    )
     assert history_response.status_code == 200
     history = history_response.json()
     assert [item["version"] for item in history] == [2, 1]
-    assert history[1]["configuration"]["cluster"]["minimum_independent_wallets"] == 3
+    assert history[1]["configuration"]["cluster"]["minimum_contributing_independent_wallets"] == 3
     assert client.get("/research-configurations/active").json()["version"] == 2
+    historical = client.get("/research-configurations/1")
+    assert historical.status_code == 200
+    assert historical.json()["id"] == "00000000-0000-0000-0000-000000000001"
 
 
 def test_saving_rejects_incompatible_ranges_with_an_actionable_message() -> None:
@@ -135,6 +143,10 @@ def test_saving_rejects_incompatible_ranges_with_an_actionable_message() -> None
             "winner_initial_market_cap_max_usd",
         ),
         ("partial_exits", "partial take-profit sell percentages must not exceed 100"),
+        ("launch_sources", "List should have at least 1 item after validation"),
+        ("market_cap_buckets", "entry_market_cap_buckets_usd must be strictly increasing"),
+        ("copyability_delays", "Input should be greater than 0"),
+        ("copyability_sizes", "copyability_sizes_sol must not contain duplicates"),
     ],
 )
 def test_saving_rejects_incompatible_domain_assumptions(case: str, message: str) -> None:
@@ -152,8 +164,16 @@ def test_saving_rejects_incompatible_domain_assumptions(case: str, message: str)
         changed["signal"]["watch_score"] = 90
     elif case == "winner_market_caps":
         changed["token"]["winner_initial_market_cap_min_usd"] = 600_000
-    else:
+    elif case == "partial_exits":
         changed["risk"]["partial_take_profits"][0]["sell_percent"] = 75
+    elif case == "launch_sources":
+        changed["token"]["launch_sources"] = []
+    elif case == "market_cap_buckets":
+        changed["token"]["entry_market_cap_buckets_usd"] = [100_000, 50_000]
+    elif case == "copyability_delays":
+        changed["wallet"]["copyability_delays_ms"] = [-1]
+    else:
+        changed["wallet"]["copyability_sizes_sol"] = [0.5, 0.5]
 
     response = client.post("/research-configurations", json={"configuration": changed})
 

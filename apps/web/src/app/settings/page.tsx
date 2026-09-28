@@ -24,8 +24,14 @@ type ConfigurationVersion = {
 };
 
 type ValidationDetail = {
+  loc?: Array<string | number>;
   msg?: string;
 };
+
+function formatValidationDetail(detail: ValidationDetail): string {
+  const path = detail.loc?.filter((part) => part !== "body").join(".");
+  return [path, detail.msg].filter(Boolean).join(": ");
+}
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -96,7 +102,7 @@ export default function SettingsPage() {
         };
         const detail = Array.isArray(document.detail)
           ? document.detail
-              .map((item) => item.msg)
+              .map(formatValidationDetail)
               .filter(Boolean)
               .join("; ")
           : document.detail;

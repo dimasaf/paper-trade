@@ -55,7 +55,7 @@ DEFAULT_CONFIGURATION = {
         },
     },
     "cluster": {
-        "minimum_independent_wallets": 3,
+        "minimum_contributing_independent_wallets": 3,
         "window_seconds": 300,
         "minimum_average_wallet_score": 80.0,
     },
@@ -65,7 +65,7 @@ DEFAULT_CONFIGURATION = {
         "cooldown_seconds": 900,
         "score_weights": {
             "wallet_quality": 25.0,
-            "independent_wallets": 20.0,
+            "contributing_independent_wallets": 20.0,
             "token_risk": 20.0,
             "liquidity": 10.0,
             "entry_quality": 10.0,

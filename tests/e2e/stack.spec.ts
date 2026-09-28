@@ -16,6 +16,32 @@ test("running workspace reports every dependency ready", async ({ page }) => {
   }
 });
 
+test("running workspace rejects invalid research settings through FastAPI", async ({
+  page,
+}) => {
+  test.skip(
+    !process.env.STACK_E2E,
+    "Runs against the Docker Compose workspace",
+  );
+
+  await page.goto("/settings");
+  await expect(page.getByText("Active version 1")).toBeVisible();
+  const editor = page.getByLabel("Research configuration JSON");
+  const configuration = JSON.parse(await editor.inputValue()) as {
+    execution: { latency_ms: number };
+  };
+  configuration.execution.latency_ms = -1;
+  await editor.fill(JSON.stringify(configuration, null, 2));
+  await page.getByRole("button", { name: "Save new version" }).click();
+
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: "configuration.execution.latency_ms",
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Active version 1")).toBeVisible();
+});
+
 test("running workspace persists immutable research configuration versions", async ({
   page,
 }) => {
@@ -28,9 +54,9 @@ test("running workspace persists immutable research configuration versions", asy
   await expect(page.getByText("Active version 1")).toBeVisible();
   const editor = page.getByLabel("Research configuration JSON");
   const configuration = JSON.parse(await editor.inputValue()) as {
-    cluster: { minimum_independent_wallets: number };
+    cluster: { minimum_contributing_independent_wallets: number };
   };
-  configuration.cluster.minimum_independent_wallets = 4;
+  configuration.cluster.minimum_contributing_independent_wallets = 4;
   await editor.fill(JSON.stringify(configuration, null, 2));
   await page.getByRole("button", { name: "Save new version" }).click();
 
