@@ -1,0 +1,16 @@
+{
+  "name": "paper-trade",
+  "private": true,
+  "packageManager": "pnpm@10.31.0",
+  "scripts": {
+    "build": "pnpm --filter @paper-trade/web build",
+    "e2e": "playwright test",
+    "format:check": "prettier --check \"apps/web/**/*.{ts,tsx,css,json,mjs}\" \"tests/e2e/**/*.ts\" playwright.config.ts package.json pnpm-workspace.yaml",
+    "lint": "pnpm --filter @paper-trade/web lint",
+    "typecheck": "pnpm --filter @paper-trade/web typecheck"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "prettier": "3.8.2"
+  }
+}

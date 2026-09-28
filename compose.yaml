@@ -1,0 +1,112 @@
+name: paper-trade
+
+x-backend-environment: &backend-environment
+  PAPER_TRADE_DATABASE_URL: postgresql+asyncpg://paper_trade:paper_trade@database:5432/paper_trade
+  PAPER_TRADE_REDIS_URL: redis://redis:6379/0
+  PAPER_TRADE_WEB_ORIGIN: ${PAPER_TRADE_WEB_ORIGIN:-http://127.0.0.1:3000}
+  PAPER_TRADE_WORKER_HEARTBEAT_KEY: paper-trade:worker:heartbeat
+  PAPER_TRADE_WORKER_HEARTBEAT_MAX_AGE_SECONDS: "15"
+  PAPER_TRADE_LOG_LEVEL: INFO
+
+services:
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: paper_trade
+      POSTGRES_USER: paper_trade
+      POSTGRES_PASSWORD: paper_trade
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paper_trade -d paper_trade"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build:
+      context: ./apps/api
+    environment: *backend-environment
+    command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
+    depends_on:
+      database:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ./apps/api
+    environment: *backend-environment
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/live', timeout=2)",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    build:
+      context: ./apps/api
+    environment: *backend-environment
+    command: ["arq", "paper_trade.worker.WorkerSettings"]
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "arq", "--check", "paper_trade.worker.WorkerSettings"]
+      interval: 5s
+      timeout: 4s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8000}
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8000}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:
