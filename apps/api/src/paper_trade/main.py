@@ -29,6 +29,13 @@ from paper_trade.research_configuration import (
     ResearchConfigurationStore,
     VersionedResearchConfiguration,
 )
+from paper_trade.tokens import (
+    PostgresTokenStore,
+    RegisterTokenRequest,
+    TokenRecord,
+    TokenRegistrationService,
+    TokenStore,
+)
 
 http_logger = logging.getLogger("paper_trade.http")
 
@@ -44,6 +51,7 @@ def create_app(
     health_service: Optional[HealthService] = None,
     settings: Optional[Settings] = None,
     research_configuration_store: Optional[ResearchConfigurationStore] = None,
+    token_store: Optional[TokenStore] = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
 
@@ -69,6 +77,7 @@ def create_app(
         application.state.research_configuration_store = (
             research_configuration_store or PostgresResearchConfigurationStore(engine)
         )
+        application.state.token_store = token_store or PostgresTokenStore(engine)
         try:
             yield
         finally:
@@ -78,6 +87,7 @@ def create_app(
     app = FastAPI(title="Paper Trade API", version="0.1.0", lifespan=lifespan)
     app.state.health_service = health_service or StartupHealthService()
     app.state.research_configuration_store = research_configuration_store
+    app.state.token_store = token_store
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(
@@ -161,6 +171,43 @@ def create_app(
         request: CreateResearchConfiguration,
     ) -> VersionedResearchConfiguration:
         return await configuration_store().create(request.configuration)
+
+    def tokens_store() -> TokenStore:
+        store = app.state.token_store
+        if store is None:
+            raise HTTPException(status_code=503, detail="Token store is unavailable")
+        return store
+
+    def token_service() -> TokenRegistrationService:
+        configuration = app.state.research_configuration_store
+        if configuration is None:
+            raise HTTPException(
+                status_code=503, detail="Research configuration store is unavailable"
+            )
+        return TokenRegistrationService(store=tokens_store(), configuration_store=configuration)
+
+    @app.post("/tokens", response_model=TokenRecord, status_code=201)
+    async def register_token(request: RegisterTokenRequest, response: Response) -> TokenRecord:
+        outcome = await token_service().register_launch_event(request.event)
+        if outcome.token is None:
+            raise HTTPException(status_code=409, detail=outcome.reason)
+        if outcome.status == "existing":
+            response.status_code = 200
+        return outcome.token
+
+    @app.get("/tokens", response_model=list[TokenRecord])
+    async def list_tokens() -> list[TokenRecord]:
+        return await tokens_store().list()
+
+    @app.get("/tokens/{address}", response_model=TokenRecord)
+    async def token_detail(address: str) -> TokenRecord:
+        token = await tokens_store().get(address)
+        if token is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Token {address} is not registered",
+            )
+        return token
 
     @app.get("/health", response_model=HealthResponse)
     async def health(request: Request) -> HealthResponse:

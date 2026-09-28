@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+
+import SiteNav from "@/components/SiteNav";
 
 const sectionLabels = {
   token: "Token",
@@ -126,12 +127,7 @@ export default function SettingsPage() {
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-6 py-14 sm:px-10">
-      <nav className="mb-8 flex gap-5 text-sm text-cyan-300">
-        <Link href="/">Overview</Link>
-        <span aria-current="page" className="text-white">
-          Settings
-        </span>
-      </nav>
+      <SiteNav />
 
       <header className="mb-8">
         <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-300">

@@ -21,6 +21,8 @@ This builds the applications, waits for PostgreSQL and Redis, applies Alembic mi
 Open:
 
 - Overview: http://127.0.0.1:3000
+- Tokens: http://127.0.0.1:3000/tokens
+- Token detail: http://127.0.0.1:3000/tokens/{address}
 - Research Settings: http://127.0.0.1:3000/settings
 - Backend health: http://127.0.0.1:8000/health
 - Backend liveness: http://127.0.0.1:8000/live
@@ -37,6 +39,30 @@ Settings exposes the active Token, Wallet, cluster, Signal, Paper Trading, risk,
 - `POST /research-configurations`
 
 PostgreSQL seeds version 1 on a fresh installation and rejects updates or deletes to stored versions.
+
+## Token universe
+
+The Token universe is seeded from recorded, source-neutral launch events. A
+confirmed event from a configured launch source creates one classified Token with
+its address, name, symbol, creator, creation time, launch platform, and initial
+lifecycle state. Classification reads the active immutable research
+configuration and records per-criterion pass/fail evidence together with the
+configuration `id` and `version` used. Provider identity, as-of interval,
+completeness, commitment, and unknown fields are retained with the Token, and
+missing facts stay explicitly `UNKNOWN`.
+
+Registration is idempotent: replaying the identical event does not duplicate the
+Token, its lifecycle transition, or its coverage. Events observed at `processed`
+commitment never create or transition a Token (ADR-0002). Lifecycle transitions
+are stored as evidence with an observed time rather than only a current state.
+
+Every launch Adapter satisfies the `LaunchEventSource` interface and passes the
+same deterministic provider contract suite over recorded fixtures. No network
+endpoint is called by the deterministic suite. The HTTP interfaces are:
+
+- `GET /tokens`
+- `POST /tokens` with `{"event": <launch event>}`
+- `GET /tokens/{address}`
 
 ## Migrations
 
@@ -66,7 +92,7 @@ make test-stack   # Fresh Docker stack, repeated migrations, real browser smoke 
 make test         # Everything above
 ```
 
-`make test-stack` uses an isolated Docker Compose project and deletes its test volumes when complete.
+`make test-stack` uses an isolated Docker Compose project and deletes its test volumes when complete. The real-stack browser journey registers a recorded launch event and reads it back through the Token detail page.
 
 ## Health contract
 
