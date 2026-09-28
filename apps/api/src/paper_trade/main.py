@@ -7,7 +7,7 @@ from time import perf_counter
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from redis.asyncio import Redis
@@ -23,6 +23,12 @@ from paper_trade.health import (
 )
 from paper_trade.observability import configure_logging
 from paper_trade.probes import DatabaseProbe, RedisProbe, WorkerProbe
+from paper_trade.research_configuration import (
+    CreateResearchConfiguration,
+    PostgresResearchConfigurationStore,
+    ResearchConfigurationStore,
+    VersionedResearchConfiguration,
+)
 
 http_logger = logging.getLogger("paper_trade.http")
 
@@ -37,6 +43,7 @@ class HealthResponse(BaseModel):
 def create_app(
     health_service: Optional[HealthService] = None,
     settings: Optional[Settings] = None,
+    research_configuration_store: Optional[ResearchConfigurationStore] = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
 
@@ -59,6 +66,9 @@ def create_app(
                 maximum_age_seconds=runtime_settings.worker_heartbeat_max_age_seconds,
             ),
         )
+        application.state.research_configuration_store = (
+            research_configuration_store or PostgresResearchConfigurationStore(engine)
+        )
         try:
             yield
         finally:
@@ -67,6 +77,7 @@ def create_app(
 
     app = FastAPI(title="Paper Trade API", version="0.1.0", lifespan=lifespan)
     app.state.health_service = health_service or StartupHealthService()
+    app.state.research_configuration_store = research_configuration_store
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(
@@ -77,7 +88,7 @@ def create_app(
             }
         ),
         allow_credentials=False,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", "X-Correlation-ID"],
     )
 
@@ -103,6 +114,38 @@ def create_app(
     @app.get("/live")
     async def live() -> dict[str, str]:
         return {"status": "ready"}
+
+    def configuration_store() -> ResearchConfigurationStore:
+        store = app.state.research_configuration_store
+        if store is None:
+            raise HTTPException(
+                status_code=503, detail="Research configuration store is unavailable"
+            )
+        return store
+
+    @app.get(
+        "/research-configurations/active",
+        response_model=VersionedResearchConfiguration,
+    )
+    async def active_research_configuration() -> VersionedResearchConfiguration:
+        return await configuration_store().get_active()
+
+    @app.get(
+        "/research-configurations",
+        response_model=list[VersionedResearchConfiguration],
+    )
+    async def research_configuration_history() -> list[VersionedResearchConfiguration]:
+        return await configuration_store().list_versions()
+
+    @app.post(
+        "/research-configurations",
+        response_model=VersionedResearchConfiguration,
+        status_code=201,
+    )
+    async def create_research_configuration(
+        request: CreateResearchConfiguration,
+    ) -> VersionedResearchConfiguration:
+        return await configuration_store().create(request.configuration)
 
     @app.get("/health", response_model=HealthResponse)
     async def health(request: Request) -> HealthResponse:

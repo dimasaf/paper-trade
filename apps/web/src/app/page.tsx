@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const healthComponentNames = [
@@ -75,6 +76,12 @@ export default function OverviewPage() {
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-6 py-14 sm:px-10">
+      <nav className="mb-8 flex gap-5 text-sm text-cyan-300">
+        <span aria-current="page" className="text-white">
+          Overview
+        </span>
+        <Link href="/settings">Settings</Link>
+      </nav>
       <header className="mb-10 flex flex-col gap-3">
         <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-300">
           Paper Trade

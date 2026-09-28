@@ -21,10 +21,21 @@ This builds the applications, waits for PostgreSQL and Redis, applies Alembic mi
 Open:
 
 - Overview: http://127.0.0.1:3000
+- Research Settings: http://127.0.0.1:3000/settings
 - Backend health: http://127.0.0.1:8000/health
 - Backend liveness: http://127.0.0.1:8000/live
 
 Inspect logs with `make logs` and stop services with `make down`.
+
+## Versioned research configuration
+
+Settings exposes the active Token, Wallet, cluster, Signal, Paper Trading, risk, and execution assumptions. Edit the complete JSON document and save to create a new immutable version; previous versions remain visible in history. The HTTP interfaces are:
+
+- `GET /research-configurations/active`
+- `GET /research-configurations`
+- `POST /research-configurations`
+
+PostgreSQL seeds version 1 on a fresh installation and rejects updates or deletes to stored versions.
 
 ## Migrations
 
