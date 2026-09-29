@@ -99,8 +99,8 @@ test("running workspace keeps one Raydium Token through LaunchLab migration", as
   await expect(page.getByTestId("token-lifecycle-state")).toHaveText(
     "MIGRATED",
   );
-  await expect(page.getByTestId("lifecycle-transitions")).toHaveText("NEW");
-  await expect(page.getByTestId("lifecycle-transitions")).toHaveText(
+  await expect(page.getByTestId("lifecycle-transitions")).toContainText("NEW");
+  await expect(page.getByTestId("lifecycle-transitions")).toContainText(
     "MIGRATED",
   );
   await expect(page.getByTestId("coverage-list")).toContainText(
