@@ -1,7 +1,7 @@
 """retain documented launch-program evidence with lifecycle transitions
 
 Revision ID: 0004_add_launch_program_evidence
-Revises: 0003_create_token_universe
+Revises: 0003
 Create Date: 2026-09-28
 """
 
@@ -10,7 +10,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0004_add_launch_program_evidence"
-down_revision = "0003_create_token_universe"
+down_revision = "0003"
 branch_labels = None
 depends_on = None
 

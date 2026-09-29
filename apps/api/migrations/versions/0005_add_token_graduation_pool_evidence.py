@@ -1,7 +1,7 @@
 """Retain graduation-pool evidence with Token lifecycle transitions.
 
 Revision ID: 0005
-Revises: 0004_launch_evidence
+Revises: 0004_add_launch_program_evidence
 """
 
 from collections.abc import Sequence
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0005"
-down_revision: Optional[str] = "0004_launch_evidence"
+down_revision: Optional[str] = "0004_add_launch_program_evidence"
 branch_labels: Optional[Union[str, Sequence[str]]] = None
 depends_on: Optional[Union[str, Sequence[str]]] = None
 
