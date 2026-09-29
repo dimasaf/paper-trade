@@ -451,10 +451,12 @@ class PostgresTokenStore:
                 """
                 INSERT INTO token_provider_coverage (
                     id, token_id, provider, as_of_start, as_of_end, complete,
-                    commitment, unknown_fields, warnings, source_event_id
+                    commitment, freshness_seconds, signature, slot, normalization_version,
+                    unknown_fields, warnings, source_event_id
                 ) VALUES (
                     CAST(:id AS UUID), CAST(:token_id AS UUID), :provider, :as_of_start,
-                    :as_of_end, :complete, :commitment, CAST(:unknown_fields AS JSONB),
+                    :as_of_end, :complete, :commitment, :freshness_seconds, :signature,
+                    :slot, :normalization_version, CAST(:unknown_fields AS JSONB),
                     CAST(:warnings AS JSONB), :source_event_id
                 )
                 ON CONFLICT (token_id, source_event_id) DO NOTHING
@@ -468,6 +470,10 @@ class PostgresTokenStore:
                 "as_of_end": coverage.as_of_end,
                 "complete": coverage.complete,
                 "commitment": coverage.commitment,
+                "freshness_seconds": coverage.freshness_seconds,
+                "signature": coverage.signature,
+                "slot": coverage.slot,
+                "normalization_version": coverage.normalization_version,
                 "unknown_fields": json.dumps(coverage.unknown_fields),
                 "warnings": json.dumps(coverage.warnings),
                 "source_event_id": registration.source_event_id,
@@ -491,6 +497,7 @@ class PostgresTokenStore:
             text(
                 """
                 SELECT provider, as_of_start, as_of_end, complete, commitment,
+                       freshness_seconds, signature, slot, normalization_version,
                        unknown_fields, warnings
                 FROM token_provider_coverage
                 WHERE token_id = CAST(:token_id AS UUID)
@@ -520,6 +527,10 @@ class PostgresTokenStore:
                     as_of_end=item["as_of_end"],
                     complete=item["complete"],
                     commitment=item["commitment"],
+                    freshness_seconds=item["freshness_seconds"],
+                    signature=item["signature"],
+                    slot=item["slot"],
+                    normalization_version=item["normalization_version"],
                     unknown_fields=list(_load_json(item["unknown_fields"])),
                     warnings=list(_load_json(item["warnings"])),
                 )

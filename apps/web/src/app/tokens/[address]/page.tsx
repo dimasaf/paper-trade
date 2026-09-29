@@ -217,6 +217,13 @@ export default function TokenDetailPage() {
                     {entry.complete ? "complete" : "incomplete"}
                   </p>
                   <p className="mt-2 text-slate-400">
+                    Freshness: {entry.freshness_seconds}s · Slot: {entry.slot} ·
+                    Normalization: {entry.normalization_version}
+                  </p>
+                  <p className="mt-2 break-all font-mono text-xs text-slate-500">
+                    Signature: {entry.signature}
+                  </p>
+                  <p className="mt-2 text-slate-400">
                     Unknown fields:{" "}
                     {entry.unknown_fields.length > 0
                       ? entry.unknown_fields.join(", ")

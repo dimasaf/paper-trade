@@ -98,6 +98,10 @@ def upgrade() -> None:
         sa.Column("as_of_end", sa.DateTime(timezone=True), nullable=False),
         sa.Column("complete", sa.Boolean(), nullable=False),
         sa.Column("commitment", sa.String(length=16), nullable=False),
+        sa.Column("freshness_seconds", sa.Integer(), nullable=False),
+        sa.Column("signature", sa.Text(), nullable=False),
+        sa.Column("slot", sa.BigInteger(), nullable=False),
+        sa.Column("normalization_version", sa.String(length=100), nullable=False),
         sa.Column(
             "unknown_fields",
             postgresql.JSONB(),
@@ -126,6 +130,8 @@ def upgrade() -> None:
         sa.UniqueConstraint("token_id", "source_event_id", name="uq_token_provider_coverage_event"),
         sa.CheckConstraint("as_of_start <= as_of_end", name="ck_token_provider_coverage_interval"),
         sa.CheckConstraint(COMMITMENT_CHECK, name="ck_token_provider_coverage_commitment"),
+        sa.CheckConstraint("freshness_seconds >= 0", name="ck_token_provider_coverage_freshness"),
+        sa.CheckConstraint("slot >= 0", name="ck_token_provider_coverage_slot"),
     )
     op.create_index("ix_token_provider_coverage_token", "token_provider_coverage", ["token_id"])
 

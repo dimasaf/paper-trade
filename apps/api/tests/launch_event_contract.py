@@ -36,12 +36,15 @@ async def assert_launch_event_registration_is_idempotent(
         store=store,
         configuration_store=configuration_store,
     )
-    confirmed = [
-        event for event in await source.launch_events() if event.coverage.commitment == "confirmed"
-    ]
+    events = await source.launch_events()
+    confirmed = [event for event in events if event.coverage.commitment == "confirmed"]
     for event in confirmed:
         await service.register_launch_event(event)
         await service.register_launch_event(event)
+    for event in events:
+        if event.coverage.commitment == "processed":
+            rejected = await service.register_launch_event(event)
+            assert rejected.status == "rejected"
 
     tokens = await store.list()
     expected_addresses = {event.address for event in confirmed}
@@ -63,6 +66,10 @@ def _assert_event_shape(event: LaunchEvent) -> None:
     assert coverage.provider
     assert coverage.as_of_start <= coverage.as_of_end
     assert coverage.commitment in ("confirmed", "processed")
+    assert coverage.freshness_seconds >= 0
+    assert coverage.signature
+    assert coverage.slot >= 0
+    assert coverage.normalization_version
     if not coverage.complete:
         assert coverage.unknown_fields or coverage.warnings, (
             "incomplete coverage must declare unknown fields or warnings"

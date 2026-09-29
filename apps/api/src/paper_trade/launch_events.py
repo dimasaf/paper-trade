@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Literal, Optional, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from paper_trade.research_configuration import LaunchSource
 
@@ -19,6 +19,9 @@ UNKNOWN = "UNKNOWN"
 Commitment = Literal["confirmed", "processed"]
 
 LifecycleState = Literal["NEW", "ACTIVE", "MIGRATED", "ILLIQUID", "DEAD", "SUSPICIOUS"]
+
+BASE58_ALPHABET = frozenset("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
+SOLANA_PUBLIC_KEY_LENGTHS = frozenset((32, 33, 44))
 
 LIFECYCLE_STATES: tuple[LifecycleState, ...] = (
     "NEW",
@@ -44,6 +47,10 @@ class ProviderCoverage(LaunchEventModel):
     as_of_end: datetime
     complete: bool
     commitment: Commitment
+    freshness_seconds: int = Field(ge=0)
+    signature: str = Field(min_length=1)
+    slot: int = Field(ge=0)
+    normalization_version: str = Field(min_length=1)
     unknown_fields: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
@@ -51,6 +58,8 @@ class ProviderCoverage(LaunchEventModel):
     def validate_interval(self) -> "ProviderCoverage":
         if self.as_of_end < self.as_of_start:
             raise ValueError("as_of_end must not be earlier than as_of_start")
+        if not self.complete and not (self.unknown_fields or self.warnings):
+            raise ValueError("incomplete coverage must declare unknown_fields or warnings")
         return self
 
 
@@ -71,6 +80,32 @@ class LaunchEvent(LaunchEventModel):
     market_cap_usd: Optional[float] = None
     volume_24h_usd: Optional[float] = None
     coverage: ProviderCoverage
+
+    @field_validator("address", "creator")
+    @classmethod
+    def validate_solana_public_key(cls, value: str) -> str:
+        if not _is_solana_public_key(value):
+            raise ValueError("must be a valid Solana public key")
+        return value
+
+    @model_validator(mode="after")
+    def validate_coverage_facts(self) -> "LaunchEvent":
+        for field in self.coverage.unknown_fields:
+            value = getattr(self, field)
+            if value is not None and value != UNKNOWN:
+                raise ValueError(f"{field} is declared unknown but carries {value!r}")
+        return self
+
+
+def _is_solana_public_key(value: str) -> bool:
+    if len(value) not in SOLANA_PUBLIC_KEY_LENGTHS or not set(value) <= BASE58_ALPHABET:
+        return False
+    number = 0
+    for character in value:
+        number = number * 58 + "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".index(
+            character
+        )
+    return len(number.to_bytes((number.bit_length() + 7) // 8, "big")) == 32
 
 
 class LaunchEventSource(Protocol):

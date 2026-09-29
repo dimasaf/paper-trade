@@ -25,6 +25,10 @@ export type ProviderCoverage = {
   as_of_end: string;
   complete: boolean;
   commitment: string;
+  freshness_seconds: number;
+  signature: string;
+  slot: number;
+  normalization_version: string;
   unknown_fields: string[];
   warnings: string[];
 };

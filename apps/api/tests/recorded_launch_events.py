@@ -37,6 +37,10 @@ def recorded_pump_swap_launch_event() -> LaunchEvent:
             as_of_end=_at("2026-09-28T09:05:00Z"),
             complete=True,
             commitment="confirmed",
+            freshness_seconds=5,
+            signature="recorded-signature-pumpswap-0001",
+            slot=314159265,
+            normalization_version="launch-event/v1",
         ),
     )
 
@@ -61,6 +65,10 @@ def recorded_pump_fun_launch_event() -> LaunchEvent:
             as_of_end=_at("2026-09-28T09:12:00Z"),
             complete=False,
             commitment="confirmed",
+            freshness_seconds=4,
+            signature="recorded-signature-pumpfun-0002",
+            slot=314159266,
+            normalization_version="launch-event/v1",
             unknown_fields=["liquidity_usd", "market_cap_usd", "volume_24h_usd"],
             warnings=["Bonding-curve market facts are not available at creation"],
         ),
@@ -86,6 +94,10 @@ def recorded_processed_launch_event() -> LaunchEvent:
             as_of_end=_at("2026-09-28T09:20:02Z"),
             complete=False,
             commitment="processed",
+            freshness_seconds=2,
+            signature="recorded-signature-processed-0003",
+            slot=314159267,
+            normalization_version="launch-event/v1",
             unknown_fields=["has_pool", "liquidity_usd", "market_cap_usd", "volume_24h_usd"],
         ),
     )

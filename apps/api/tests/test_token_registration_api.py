@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from recorded_launch_events import (
     recorded_processed_launch_event,
     recorded_pump_fun_launch_event,
@@ -79,6 +81,10 @@ def test_registering_a_recorded_launch_event_creates_a_token_with_provenance() -
             "commitment": "confirmed",
             "unknown_fields": [],
             "warnings": [],
+            "freshness_seconds": 5,
+            "signature": "recorded-signature-pumpswap-0001",
+            "slot": 314159265,
+            "normalization_version": "launch-event/v1",
         }
     ]
 
@@ -168,6 +174,14 @@ def test_replaying_a_recorded_launch_event_is_idempotent() -> None:
     assert len(client.get("/tokens").json()) == 1
 
 
+def test_launch_event_rejects_an_address_that_is_not_a_solana_public_key() -> None:
+    event = recorded_pump_swap_launch_event().model_dump()
+    event["address"] = "x"
+
+    with pytest.raises(ValidationError, match="valid Solana public key"):
+        recorded_pump_swap_launch_event().model_validate(event)
+
+
 def test_processed_launch_events_are_rejected_without_a_token() -> None:
     client = _client()
     event = recorded_processed_launch_event()
@@ -180,6 +194,23 @@ def test_processed_launch_events_are_rejected_without_a_token() -> None:
     )
     assert client.get("/tokens").json() == []
     assert client.get("/tokens/9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump").status_code == 404
+
+
+def test_unknown_coverage_facts_cannot_be_classified_as_passing() -> None:
+    client = _client()
+    original = recorded_pump_swap_launch_event()
+    event = original.model_copy(
+        update={
+            "coverage": original.coverage.model_copy(
+                update={"complete": False, "unknown_fields": ["has_pool"]}
+            )
+        }
+    )
+
+    response = client.post("/tokens", json={"event": event.model_dump(mode="json")})
+
+    assert response.status_code == 422
+    assert "declared unknown" in response.json()["detail"][0]["msg"]
 
 
 def test_missing_market_facts_remain_explicit_unknown_with_coverage_warnings() -> None:
