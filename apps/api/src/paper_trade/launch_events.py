@@ -97,12 +97,15 @@ class LaunchEvent(LaunchEventModel):
     liquidity_usd: Optional[float] = None
     market_cap_usd: Optional[float] = None
     volume_24h_usd: Optional[float] = None
+    graduation_pool_address: Optional[str] = None
     evidence: list[LaunchProgramEvidence] = Field(default_factory=list)
     coverage: ProviderCoverage
 
-    @field_validator("address", "creator")
+    @field_validator("address", "creator", "graduation_pool_address")
     @classmethod
-    def validate_solana_public_key(cls, value: str) -> str:
+    def validate_solana_public_key(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
         if not _is_solana_public_key(value):
             raise ValueError("must be a valid Solana public key")
         return value

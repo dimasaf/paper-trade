@@ -62,6 +62,7 @@ class LifecycleTransition(TokenModel):
     observed_at: datetime
     source_event_id: str
     reason: str = ""
+    graduation_pool_address: Optional[str] = None
     evidence: list[LaunchProgramEvidence] = Field(default_factory=list)
 
 
@@ -94,6 +95,7 @@ class TokenRegistration(TokenModel):
     lifecycle_state: LifecycleState
     source_event_id: str
     evidence: list[LaunchProgramEvidence]
+    graduation_pool_address: Optional[str] = None
     classification: Classification
     coverage: ProviderCoverage
 
@@ -223,6 +225,7 @@ class TokenRegistrationService:
             lifecycle_state=event.lifecycle_state,
             source_event_id=event.event_id,
             evidence=event.evidence,
+            graduation_pool_address=event.graduation_pool_address,
             classification=classify_launch_event(event, configuration),
             coverage=event.coverage,
         )
@@ -239,6 +242,7 @@ def _transition_from(registration: TokenRegistration) -> LifecycleTransition:
         observed_at=registration.observed_at,
         source_event_id=registration.source_event_id,
         reason="launch event registered",
+        graduation_pool_address=registration.graduation_pool_address,
         evidence=registration.evidence,
     )
 
@@ -274,8 +278,14 @@ class InMemoryTokenStore:
         ):
             return StoredRegistration(created=False, token=existing)
 
-        transitions = [*existing.lifecycle_transitions, _transition_from(registration)]
-        coverage = [*existing.coverage, registration.coverage]
+        transitions = sorted(
+            [*existing.lifecycle_transitions, _transition_from(registration)],
+            key=lambda transition: (transition.observed_at, transition.source_event_id),
+        )
+        coverage = sorted(
+            [*existing.coverage, registration.coverage],
+            key=lambda entry: (entry.as_of_start, entry.provider, entry.signature),
+        )
         record = existing.model_copy(
             update={
                 "lifecycle_state": latest_lifecycle_state(transitions),
@@ -424,10 +434,12 @@ class PostgresTokenStore:
             text(
                 """
                 INSERT INTO token_lifecycle_transitions (
-                    id, token_id, state, observed_at, source_event_id, reason, evidence
+                    id, token_id, state, observed_at, source_event_id, reason,
+                    graduation_pool_address, evidence
                 ) VALUES (
                     CAST(:id AS UUID), CAST(:token_id AS UUID), :state, :observed_at,
-                    :source_event_id, :reason, CAST(:evidence AS JSONB)
+                    :source_event_id, :reason, :graduation_pool_address,
+                    CAST(:evidence AS JSONB)
                 )
                 ON CONFLICT (token_id, source_event_id) DO NOTHING
                 RETURNING id
@@ -440,6 +452,7 @@ class PostgresTokenStore:
                 "observed_at": registration.observed_at,
                 "source_event_id": registration.source_event_id,
                 "reason": "launch event registered",
+                "graduation_pool_address": registration.graduation_pool_address,
                 "evidence": _dump_json_list(registration.evidence),
             },
         )
@@ -491,7 +504,8 @@ class PostgresTokenStore:
         transitions = await connection.execute(
             text(
                 """
-                SELECT state, observed_at, source_event_id, reason, evidence
+                SELECT state, observed_at, source_event_id, reason,
+                       graduation_pool_address, evidence
                 FROM token_lifecycle_transitions
                 WHERE token_id = CAST(:token_id AS UUID)
                 ORDER BY observed_at, sequence
@@ -527,6 +541,7 @@ class PostgresTokenStore:
                     observed_at=transition["observed_at"],
                     source_event_id=transition["source_event_id"],
                     reason=transition["reason"],
+                    graduation_pool_address=transition["graduation_pool_address"],
                     evidence=[
                         LaunchProgramEvidence.model_validate(item)
                         for item in _load_json(transition["evidence"])

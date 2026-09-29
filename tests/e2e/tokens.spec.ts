@@ -17,6 +17,7 @@ const tokenDetail = {
       observed_at: "2026-09-28T09:00:05Z",
       source_event_id: "recorded-pumpswap-pool-0001",
       reason: "launch event registered",
+      graduation_pool_address: null,
       evidence: [
         {
           event_type: "POOL_CREATE",

@@ -26,6 +26,7 @@ export type LifecycleTransition = {
   observed_at: string;
   source_event_id: string;
   reason: string;
+  graduation_pool_address: string | null;
   evidence?: LaunchProgramEvidence[];
 };
 
@@ -58,7 +59,7 @@ export type TokenRecord = {
 };
 
 export const apiUrl =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export function coverageWarnings(coverage: ProviderCoverage[]): string[] {
   const warnings: string[] = [];

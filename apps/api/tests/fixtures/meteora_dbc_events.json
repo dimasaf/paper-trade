@@ -1,0 +1,102 @@
+[
+  {
+    "event_id": "recorded-meteora-dbc-create-0001",
+    "kind": "create",
+    "address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+    "name": "Recorded Meteora Token",
+    "symbol": "RMETE",
+    "creator": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+    "created_at": "2026-09-28T10:00:00Z",
+    "observed_at": "2026-09-28T10:00:04Z",
+    "launch_source": "METEORA_DBC",
+    "coverage": {
+      "provider": "recorded-meteora-dbc",
+      "as_of_start": "2026-09-28T10:00:00Z",
+      "as_of_end": "2026-09-28T10:02:00Z",
+      "complete": false,
+      "commitment": "confirmed",
+      "freshness_seconds": 4,
+      "signature": "recorded-signature-meteora-create-0001",
+      "slot": 314159270,
+      "normalization_version": "meteora-dbc/v1",
+      "unknown_fields": ["liquidity_usd", "market_cap_usd", "volume_24h_usd"],
+      "warnings": ["Bonding-curve market facts are not available at creation"]
+    }
+  },
+  {
+    "event_id": "recorded-jupiter-studio-create-0002",
+    "kind": "create",
+    "address": "27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4",
+    "name": "Recorded Studio Token",
+    "symbol": "RSTUDIO",
+    "creator": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+    "created_at": "2026-09-28T10:10:00Z",
+    "observed_at": "2026-09-28T10:10:03Z",
+    "launch_source": "JUPITER_STUDIO",
+    "coverage": {
+      "provider": "recorded-jupiter-studio",
+      "as_of_start": "2026-09-28T10:10:00Z",
+      "as_of_end": "2026-09-28T10:12:00Z",
+      "complete": false,
+      "commitment": "confirmed",
+      "freshness_seconds": 3,
+      "signature": "recorded-signature-jupiter-create-0002",
+      "slot": 314159271,
+      "normalization_version": "meteora-dbc/v1",
+      "unknown_fields": ["liquidity_usd", "market_cap_usd", "volume_24h_usd"],
+      "warnings": ["Bonding-curve market facts are not available at creation"]
+    }
+  },
+  {
+    "event_id": "recorded-jupiter-studio-graduation-0003",
+    "kind": "graduate",
+    "address": "27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4",
+    "name": "Recorded Studio Token",
+    "symbol": "RSTUDIO",
+    "creator": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+    "created_at": "2026-09-28T10:10:00Z",
+    "observed_at": "2026-09-28T10:20:05Z",
+    "launch_source": "JUPITER_STUDIO",
+    "graduation_pool_address": "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+    "liquidity_usd": 75000,
+    "market_cap_usd": 180000,
+    "volume_24h_usd": 45000,
+    "coverage": {
+      "provider": "recorded-meteora-dbc",
+      "as_of_start": "2026-09-28T10:20:00Z",
+      "as_of_end": "2026-09-28T10:22:00Z",
+      "complete": true,
+      "commitment": "confirmed",
+      "freshness_seconds": 5,
+      "signature": "recorded-signature-jupiter-graduation-0003",
+      "slot": 314159272,
+      "normalization_version": "meteora-dbc/v1",
+      "unknown_fields": [],
+      "warnings": []
+    }
+  },
+  {
+    "event_id": "recorded-meteora-dbc-processed-0004",
+    "kind": "create",
+    "address": "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+    "name": "Processed Meteora Token",
+    "symbol": "RPROC",
+    "creator": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+    "created_at": "2026-09-28T10:30:00Z",
+    "observed_at": "2026-09-28T10:30:02Z",
+    "launch_source": "METEORA_DBC",
+    "coverage": {
+      "provider": "recorded-meteora-dbc",
+      "as_of_start": "2026-09-28T10:30:00Z",
+      "as_of_end": "2026-09-28T10:30:02Z",
+      "complete": false,
+      "commitment": "processed",
+      "freshness_seconds": 2,
+      "signature": "recorded-signature-meteora-processed-0004",
+      "slot": 314159273,
+      "normalization_version": "meteora-dbc/v1",
+      "unknown_fields": ["liquidity_usd", "market_cap_usd", "volume_24h_usd"],
+      "warnings": []
+    }
+  }
+]

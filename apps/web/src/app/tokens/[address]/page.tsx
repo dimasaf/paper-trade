@@ -168,6 +168,12 @@ export default function TokenDetailPage() {
                   <span className="text-slate-500">
                     {formatTimestamp(transition.observed_at)}
                   </span>
+                  {transition.graduation_pool_address ? (
+                    <span className="basis-full break-all font-mono text-xs text-slate-500">
+                      Meteora graduation pool:{" "}
+                      {transition.graduation_pool_address}
+                    </span>
+                  ) : null}
                 </li>
               ))}
             </ol>

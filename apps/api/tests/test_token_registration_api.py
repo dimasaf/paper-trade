@@ -71,6 +71,7 @@ def test_registering_a_recorded_launch_event_creates_a_token_with_provenance() -
             "observed_at": "2026-09-28T09:00:05Z",
             "source_event_id": "recorded-pumpswap-pool-0001",
             "reason": "launch event registered",
+            "graduation_pool_address": None,
             "evidence": [],
         }
     ]
