@@ -16,6 +16,7 @@ from paper_trade.launch_events import (
     UNKNOWN,
     LaunchEvent,
     LaunchEventModel,
+    LaunchProgramEvidence,
     ProviderCoverage,
     _is_solana_public_key,
 )
@@ -100,6 +101,14 @@ def normalize_meteora_dbc_event(event: MeteoraDbcProgramEvent) -> LaunchEvent:
         liquidity_usd=event.liquidity_usd,
         market_cap_usd=event.market_cap_usd,
         volume_24h_usd=event.volume_24h_usd,
+        evidence=[
+            LaunchProgramEvidence(
+                event_type=event.kind.upper(),
+                program_id=METEORA_DBC_PROGRAM_ID,
+                event_name=f"Meteora DBC {event.kind}",
+                pool=event.graduation_pool_address,
+            )
+        ],
         coverage=event.coverage,
     )
 
