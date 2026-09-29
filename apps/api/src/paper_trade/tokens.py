@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Any, Literal, Optional, Protocol
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from paper_trade.launch_events import (
     UNKNOWN,
     LaunchEvent,
+    LaunchProgramEvidence,
     LaunchSource,
     LifecycleState,
     ProviderCoverage,
@@ -61,6 +62,7 @@ class LifecycleTransition(TokenModel):
     observed_at: datetime
     source_event_id: str
     reason: str = ""
+    evidence: list[LaunchProgramEvidence] = Field(default_factory=list)
 
 
 class TokenRecord(TokenModel):
@@ -91,6 +93,7 @@ class TokenRegistration(TokenModel):
     launch_platform: LaunchSource
     lifecycle_state: LifecycleState
     source_event_id: str
+    evidence: list[LaunchProgramEvidence]
     classification: Classification
     coverage: ProviderCoverage
 
@@ -219,6 +222,7 @@ class TokenRegistrationService:
             launch_platform=event.launch_platform,
             lifecycle_state=event.lifecycle_state,
             source_event_id=event.event_id,
+            evidence=event.evidence,
             classification=classify_launch_event(event, configuration),
             coverage=event.coverage,
         )
@@ -235,6 +239,7 @@ def _transition_from(registration: TokenRegistration) -> LifecycleTransition:
         observed_at=registration.observed_at,
         source_event_id=registration.source_event_id,
         reason="launch event registered",
+        evidence=registration.evidence,
     )
 
 
@@ -419,10 +424,10 @@ class PostgresTokenStore:
             text(
                 """
                 INSERT INTO token_lifecycle_transitions (
-                    id, token_id, state, observed_at, source_event_id, reason
+                    id, token_id, state, observed_at, source_event_id, reason, evidence
                 ) VALUES (
                     CAST(:id AS UUID), CAST(:token_id AS UUID), :state, :observed_at,
-                    :source_event_id, :reason
+                    :source_event_id, :reason, CAST(:evidence AS JSONB)
                 )
                 ON CONFLICT (token_id, source_event_id) DO NOTHING
                 RETURNING id
@@ -435,6 +440,7 @@ class PostgresTokenStore:
                 "observed_at": registration.observed_at,
                 "source_event_id": registration.source_event_id,
                 "reason": "launch event registered",
+                "evidence": _dump_json_list(registration.evidence),
             },
         )
         return result.scalar_one_or_none() is not None
@@ -485,7 +491,7 @@ class PostgresTokenStore:
         transitions = await connection.execute(
             text(
                 """
-                SELECT state, observed_at, source_event_id, reason
+                SELECT state, observed_at, source_event_id, reason, evidence
                 FROM token_lifecycle_transitions
                 WHERE token_id = CAST(:token_id AS UUID)
                 ORDER BY observed_at, sequence
@@ -516,7 +522,16 @@ class PostgresTokenStore:
             launch_platform=row["launch_platform"],
             lifecycle_state=row["lifecycle_state"],
             lifecycle_transitions=[
-                LifecycleTransition.model_validate(dict(transition))
+                LifecycleTransition(
+                    state=transition["state"],
+                    observed_at=transition["observed_at"],
+                    source_event_id=transition["source_event_id"],
+                    reason=transition["reason"],
+                    evidence=[
+                        LaunchProgramEvidence.model_validate(item)
+                        for item in _load_json(transition["evidence"])
+                    ],
+                )
                 for transition in transitions.mappings()
             ],
             classification=Classification.model_validate(_load_json(row["classification"])),
@@ -541,6 +556,10 @@ class PostgresTokenStore:
 
 def _dump_json(document: BaseModel) -> str:
     return json.dumps(document.model_dump(mode="json"))
+
+
+def _dump_json_list(documents: Sequence[BaseModel]) -> str:
+    return json.dumps([document.model_dump(mode="json") for document in documents])
 
 
 def _load_json(value: object) -> Any:

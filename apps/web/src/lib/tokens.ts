@@ -12,11 +12,21 @@ export type Classification = {
   criteria: ClassificationCriterion[];
 };
 
+export type LaunchProgramEvidence = {
+  event_type: string;
+  program_id: string;
+  event_name: string;
+  bonding_curve: string | null;
+  bonding_curve_progress_percent: number | null;
+  pool: string | null;
+};
+
 export type LifecycleTransition = {
   state: string;
   observed_at: string;
   source_event_id: string;
   reason: string;
+  evidence?: LaunchProgramEvidence[];
 };
 
 export type ProviderCoverage = {

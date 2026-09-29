@@ -57,8 +57,13 @@ commitment never create or transition a Token (ADR-0002). Lifecycle transitions
 are stored as evidence with an observed time rather than only a current state.
 
 Every launch Adapter satisfies the `LaunchEventSource` interface and passes the
-same deterministic provider contract suite over recorded fixtures. No network
-endpoint is called by the deterministic suite. The HTTP interfaces are:
+same deterministic provider contract suite over recorded fixtures. The
+`PumpLaunchEventSource` normalizes documented pump.fun `CreateEvent`, `TradeEvent`,
+and `CompleteEvent` activity plus PumpSwap `CreatePoolEvent` activity into those
+source-neutral events. It retains documented program, bonding-curve progress, and
+pool evidence with lifecycle transitions, filters `processed` observations, and
+collapses reconnect replays by event id. No network endpoint is called by the
+deterministic suite. The HTTP interfaces are:
 
 - `GET /tokens`
 - `POST /tokens` with `{"event": <launch event>}`

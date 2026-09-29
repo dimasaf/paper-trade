@@ -21,7 +21,7 @@ Commitment = Literal["confirmed", "processed"]
 LifecycleState = Literal["NEW", "ACTIVE", "MIGRATED", "ILLIQUID", "DEAD", "SUSPICIOUS"]
 
 BASE58_ALPHABET = frozenset("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
-SOLANA_PUBLIC_KEY_LENGTHS = frozenset((32, 33, 44))
+SOLANA_PUBLIC_KEY_LENGTHS = frozenset(range(32, 45))
 
 LIFECYCLE_STATES: tuple[LifecycleState, ...] = (
     "NEW",
@@ -63,6 +63,24 @@ class ProviderCoverage(LaunchEventModel):
         return self
 
 
+class LaunchProgramEvidence(LaunchEventModel):
+    """Documented on-chain program evidence retained with a launch transition."""
+
+    event_type: str = Field(min_length=1)
+    program_id: str
+    event_name: str = Field(min_length=1)
+    bonding_curve: Optional[str] = None
+    bonding_curve_progress_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    pool: Optional[str] = None
+
+    @field_validator("program_id", "bonding_curve", "pool")
+    @classmethod
+    def validate_optional_solana_public_key(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not _is_solana_public_key(value):
+            raise ValueError("must be a valid Solana public key")
+        return value
+
+
 class LaunchEvent(LaunchEventModel):
     """A source-neutral recorded launch fact as returned by any Adapter."""
 
@@ -79,6 +97,7 @@ class LaunchEvent(LaunchEventModel):
     liquidity_usd: Optional[float] = None
     market_cap_usd: Optional[float] = None
     volume_24h_usd: Optional[float] = None
+    evidence: list[LaunchProgramEvidence] = Field(default_factory=list)
     coverage: ProviderCoverage
 
     @field_validator("address", "creator")

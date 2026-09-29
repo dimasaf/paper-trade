@@ -17,6 +17,16 @@ const tokenDetail = {
       observed_at: "2026-09-28T09:00:05Z",
       source_event_id: "recorded-pumpswap-pool-0001",
       reason: "launch event registered",
+      evidence: [
+        {
+          event_type: "POOL_CREATE",
+          event_name: "CreatePoolEvent",
+          program_id: "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+          bonding_curve: null,
+          bonding_curve_progress_percent: null,
+          pool: "4wBqpZM9W7D6h2ZQ5E6o1CymCPG9hrpE7cXkYkKpE8Qm",
+        },
+      ],
     },
   ],
   classification: {
@@ -75,6 +85,9 @@ test("Token detail shows provenance, lifecycle, classification evidence, and cov
   await expect(page.getByTestId("token-platform")).toHaveText("PUMP_SWAP");
   await expect(page.getByTestId("token-lifecycle-state")).toHaveText("NEW");
   await expect(page.getByTestId("lifecycle-transitions")).toContainText("NEW");
+  await expect(page.getByTestId("launch-program-evidence")).toContainText(
+    "CreatePoolEvent",
+  );
   await expect(page.getByTestId("classification-evidence")).toContainText(
     "liquidity_usd",
   );

@@ -147,9 +147,24 @@ export default function TokenDetailPage() {
                   key={`${transition.source_event_id}-${transition.state}`}
                   className="flex flex-wrap justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-4 text-sm"
                 >
-                  <span className="font-medium text-slate-200">
-                    {transition.state}
-                  </span>
+                  <div>
+                    <span className="font-medium text-slate-200">
+                      {transition.state}
+                    </span>
+                    {(transition.evidence ?? []).map((evidence) => (
+                      <p
+                        key={`${evidence.program_id}-${evidence.event_type}`}
+                        data-testid="launch-program-evidence"
+                        className="mt-1 break-all font-mono text-xs text-slate-500"
+                      >
+                        {evidence.event_name} · {evidence.program_id}
+                        {evidence.bonding_curve_progress_percent != null
+                          ? ` · bonding curve ${evidence.bonding_curve_progress_percent}%`
+                          : ""}
+                        {evidence.pool ? ` · pool ${evidence.pool}` : ""}
+                      </p>
+                    ))}
+                  </div>
                   <span className="text-slate-500">
                     {formatTimestamp(transition.observed_at)}
                   </span>

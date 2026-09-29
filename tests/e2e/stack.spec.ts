@@ -87,13 +87,39 @@ test("running workspace registers a recorded launch event into a Token detail pa
   const registered = (await response.json()) as { address: string };
   expect(registered.address).toBe(recordedStackJourneyEvent.address);
 
+  const migration = {
+    ...recordedStackJourneyEvent,
+    event_id: "stack-journey-pumpswap-migration-0002",
+    observed_at: "2026-09-28T09:10:05Z",
+    lifecycle_state: "MIGRATED",
+    evidence: [
+      {
+        event_type: "POOL_CREATE",
+        event_name: "CreatePoolEvent",
+        program_id: "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+        bonding_curve: null,
+        bonding_curve_progress_percent: null,
+        pool: "4wBqpZM9W7D6h2ZQ5E6o1CymCPG9hrpE7cXkYkKpE8Qm",
+      },
+    ],
+  };
+  const migrated = await page.request.post(`${apiUrl}/tokens`, {
+    data: { event: migration },
+  });
+  expect(migrated.status()).toBe(200);
+
   await page.goto(`/tokens/${recordedStackJourneyEvent.address}`);
 
   await expect(
     page.getByRole("heading", { name: "Stack Journey Token" }),
   ).toBeVisible();
   await expect(page.getByTestId("token-platform")).toHaveText("PUMP_SWAP");
-  await expect(page.getByTestId("token-lifecycle-state")).toHaveText("NEW");
+  await expect(page.getByTestId("token-lifecycle-state")).toHaveText(
+    "MIGRATED",
+  );
+  await expect(page.getByTestId("lifecycle-transitions")).toContainText(
+    "CreatePoolEvent",
+  );
   await expect(page.getByTestId("classification-evidence")).toContainText(
     "launch_source",
   );

@@ -11,6 +11,7 @@ from recorded_launch_events import (
 )
 
 from paper_trade.health import ComponentHealth, HealthComponents, HealthReport
+from paper_trade.launch_events import LaunchProgramEvidence
 from paper_trade.main import create_app
 from paper_trade.research_configuration import InMemoryResearchConfigurationStore
 from paper_trade.tokens import InMemoryTokenStore
@@ -70,6 +71,7 @@ def test_registering_a_recorded_launch_event_creates_a_token_with_provenance() -
             "observed_at": "2026-09-28T09:00:05Z",
             "source_event_id": "recorded-pumpswap-pool-0001",
             "reason": "launch event registered",
+            "evidence": [],
         }
     ]
     assert document["coverage"] == [
@@ -156,6 +158,56 @@ def test_classification_uses_the_active_configuration_version_and_thresholds() -
         "observed": "52000",
         "passed": False,
     }
+
+
+def test_confirmed_pump_creation_and_migration_are_idempotent_over_http() -> None:
+    client = _client()
+    creation = recorded_pump_fun_launch_event()
+    migration = recorded_pump_swap_launch_event().model_copy(
+        update={
+            "event_id": "recorded-pumpswap-migration-0004",
+            "address": creation.address,
+            "created_at": creation.created_at,
+            "observed_at": datetime(2026, 9, 28, 9, 15, tzinfo=timezone.utc),
+            "lifecycle_state": "MIGRATED",
+            "evidence": [
+                LaunchProgramEvidence(
+                    event_type="POOL_CREATE",
+                    event_name="CreatePoolEvent",
+                    program_id="pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+                    pool="4wBqpZM9W7D6h2ZQ5E6o1CymCPG9hrpE7cXkYkKpE8Qm",
+                )
+            ],
+        }
+    )
+
+    assert (
+        client.post("/tokens", json={"event": creation.model_dump(mode="json")}).status_code == 201
+    )
+    assert (
+        client.post("/tokens", json={"event": migration.model_dump(mode="json")}).status_code == 200
+    )
+    replay = client.post("/tokens", json={"event": migration.model_dump(mode="json")})
+    assert replay.status_code == 200
+
+    document = client.get(f"/tokens/{creation.address}").json()
+    assert document["lifecycle_state"] == "MIGRATED"
+    assert [transition["state"] for transition in document["lifecycle_transitions"]] == [
+        "NEW",
+        "MIGRATED",
+    ]
+    assert document["lifecycle_transitions"][1]["evidence"][0]["event_name"] == "CreatePoolEvent"
+    assert len(document["coverage"]) == 2
+
+    processed = creation.model_copy(
+        update={
+            "event_id": "recorded-pumpfun-processed-0005",
+            "coverage": creation.coverage.model_copy(update={"commitment": "processed"}),
+        }
+    )
+    rejected = client.post("/tokens", json={"event": processed.model_dump(mode="json")})
+    assert rejected.status_code == 409
+    assert client.get("/tokens").json() == [document]
 
 
 def test_replaying_a_recorded_launch_event_is_idempotent() -> None:
