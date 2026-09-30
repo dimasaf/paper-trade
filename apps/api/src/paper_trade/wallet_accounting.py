@@ -311,6 +311,9 @@ class WalletAccountingService:
                         )
                     )
                 elif movement.movement_type in ("TRANSFER_IN", "AIRDROP"):
+                    contamination_type: Literal["TRANSFER_IN", "AIRDROP"] = (
+                        "TRANSFER_IN" if movement.movement_type == "TRANSFER_IN" else "AIRDROP"
+                    )
                     lots.append(
                         _LotBalance(
                             WalletLot(
@@ -322,7 +325,7 @@ class WalletAccountingService:
                                 remaining_quantity=movement.quantity,
                                 unit_cost_usd=0.0,
                                 contaminated=True,
-                                contamination_reason=movement.movement_type,
+                                contamination_reason=contamination_type,
                             )
                         )
                     )
@@ -331,7 +334,7 @@ class WalletAccountingService:
                             token_address=movement.token_address,
                             source_signature=activity.signature,
                             quantity=movement.quantity,
-                            movement_type=movement.movement_type,
+                            movement_type=contamination_type,
                             evidence=movement.evidence,
                         )
                     )
