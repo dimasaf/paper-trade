@@ -43,6 +43,7 @@ from paper_trade.tokens import (
     TokenRegistrationService,
     TokenStore,
 )
+from paper_trade.wallet_accounting import WalletAccounting, WalletAccountingStore
 
 http_logger = logging.getLogger("paper_trade.http")
 
@@ -60,6 +61,7 @@ def create_app(
     research_configuration_store: Optional[ResearchConfigurationStore] = None,
     token_store: Optional[TokenStore] = None,
     market_state_store: Optional[MarketStateStore] = None,
+    wallet_accounting_store: Optional[WalletAccountingStore] = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
 
@@ -100,6 +102,7 @@ def create_app(
     app.state.research_configuration_store = research_configuration_store
     app.state.token_store = token_store
     app.state.market_state_store = market_state_store
+    app.state.wallet_accounting_store = wallet_accounting_store
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(
@@ -196,6 +199,12 @@ def create_app(
             raise HTTPException(status_code=503, detail="Market state store is unavailable")
         return TokenMarketStateService(store)
 
+    def wallet_store() -> WalletAccountingStore:
+        store = app.state.wallet_accounting_store
+        if store is None:
+            raise HTTPException(status_code=503, detail="Wallet accounting store is unavailable")
+        return store
+
     def token_service() -> TokenRegistrationService:
         configuration = app.state.research_configuration_store
         if configuration is None:
@@ -241,6 +250,13 @@ def create_app(
             address,
             as_of or datetime.now(timezone.utc),
         )
+
+    @app.get("/wallets/{address}/accounting", response_model=WalletAccounting)
+    async def wallet_accounting_detail(
+        address: str,
+        as_of: Optional[datetime] = None,
+    ) -> WalletAccounting:
+        return await wallet_store().accounting(address, as_of or datetime.now(timezone.utc))
 
     @app.get("/health", response_model=HealthResponse)
     async def health(request: Request) -> HealthResponse:
