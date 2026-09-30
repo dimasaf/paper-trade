@@ -112,21 +112,17 @@ def client() -> TestClient:
     asyncio.run(market_store.record(observation("initial", "2026-09-28T09:00:00Z", 120_000, 5_000)))
     asyncio.run(market_store.record(observation("entry", "2026-09-28T09:04:00Z", 125_000, None)))
     # This peak qualifies the Token, but it is deliberately unavailable to its 09:05 entry.
-    asyncio.run(
-        market_store.record(observation("future-peak", "2026-09-28T09:50:00Z", 1_200_000, 60_000))
-    )
+    asyncio.run(market_store.record(observation("future-peak", "2026-09-28T09:50:00Z", 1_200_000, 60_000)))
     source = RecordedEarlyBuyerSource(
-        pages=[
-            [
-                transaction(),
-                transaction(
-                    wallet_address=OTHER_WALLET,
-                    signature="recorded-failed-buy-0002",
-                    succeeded=False,
-                    notional_usd=20,
-                ),
-            ]
-        ],
+        pages=[[
+            transaction(),
+            transaction(
+                wallet_address=OTHER_WALLET,
+                signature="recorded-failed-buy-0002",
+                succeeded=False,
+                notional_usd=20,
+            ),
+        ]],
         coverage=coverage(),
     )
     identifiers = iter([UUID("00000000-0000-0000-0000-000000000001")])
@@ -145,12 +141,7 @@ def client() -> TestClient:
 
 def test_historical_winner_endpoint_freezes_configuration_and_hides_future_entry_facts() -> None:
     api = client()
-    assert (
-        api.post(
-            "/tokens", json={"event": recorded_pump_swap_launch_event().model_dump(mode="json")}
-        ).status_code
-        == 201
-    )
+    assert api.post("/tokens", json={"event": recorded_pump_swap_launch_event().model_dump(mode="json")}).status_code == 201
 
     response = api.post(
         "/discovery/historical-winners",
