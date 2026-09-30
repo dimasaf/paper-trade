@@ -107,6 +107,88 @@ test("Token detail shows provenance, lifecycle, classification evidence, and cov
   await expect(warnings).toContainText("Market facts are not available yet");
 });
 
+test("Token detail displays a recorded point-in-time market state and its provenance", async ({
+  page,
+}) => {
+  const marketState = {
+    address: tokenAddress,
+    as_of: "2026-09-28T09:02:00Z",
+    current: {
+      observation_id: "recorded-gecko-0002",
+      address: tokenAddress,
+      observed_at: "2026-09-28T09:01:30Z",
+      price_usd: 0.0025,
+      supply: 1000000000,
+      market_cap_usd: 2000000,
+      liquidity_usd: 100000,
+      volume_24h_usd: 450000,
+      pools: [
+        {
+          address: "4wBqpZM9W7D6h2ZQ5E6o1CymCPG9hrpE7cXkYkKpE8Qm",
+          venue: "Raydium",
+        },
+      ],
+      coverage: {
+        provider: "GECKOTERMINAL",
+        requested_as_of: "2026-09-28T09:01:30Z",
+        as_of_start: "2026-09-28T09:01:30Z",
+        as_of_end: "2026-09-28T09:01:30Z",
+        complete: true,
+        freshness_seconds: 60,
+        unknown_fields: [],
+        warnings: [],
+      },
+    },
+    observations: [
+      {
+        observation_id: "recorded-dex-0001",
+        observed_at: "2026-09-28T09:00:00Z",
+        price_usd: 0.002,
+        market_cap_usd: 2500000,
+        liquidity_usd: 125000,
+        coverage: { provider: "DEXSCREENER" },
+      },
+    ],
+    peaks: {
+      market_cap_usd: {
+        value_usd: 2500000,
+        observed_at: "2026-09-28T09:00:00Z",
+        observation_id: "recorded-dex-0001",
+        provider: "DEXSCREENER",
+      },
+      liquidity_usd: null,
+    },
+    coverage: [],
+    warnings: ["DEXSCREENER observation is stale at the requested as-of time"],
+  };
+
+  await page.route("**/tokens/**", async (route) => {
+    if (route.request().resourceType() === "document") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: route.request().url().endsWith("/market-state")
+        ? marketState
+        : tokenDetail,
+    });
+  });
+
+  await page.goto(`/tokens/${tokenAddress}`);
+
+  await expect(page.getByTestId("market-state-provider")).toContainText(
+    "GECKOTERMINAL",
+  );
+  await expect(page.getByTestId("market-current-state")).toContainText(
+    "2000000 USD",
+  );
+  await expect(page.getByTestId("market-peaks")).toContainText("2500000 USD");
+  await expect(page.getByTestId("market-history")).toContainText("DEXSCREENER");
+  await expect(page.getByTestId("market-state-warnings")).toContainText(
+    "DEXSCREENER observation is stale",
+  );
+});
+
 test("Token detail reports an unregistered address instead of inventing data", async ({
   page,
 }) => {

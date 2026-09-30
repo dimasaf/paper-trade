@@ -58,6 +58,55 @@ export type TokenRecord = {
   coverage: ProviderCoverage[];
 };
 
+export type MarketProviderCoverage = {
+  provider: "DEXSCREENER" | "GECKOTERMINAL" | "JUPITER";
+  requested_as_of: string;
+  as_of_start: string;
+  as_of_end: string;
+  complete: boolean;
+  freshness_seconds: number;
+  unknown_fields: string[];
+  warnings: string[];
+};
+
+export type MarketPool = {
+  address: string;
+  venue: string;
+};
+
+export type MarketObservation = {
+  observation_id: string;
+  address: string;
+  observed_at: string;
+  price_usd: number | null;
+  supply: number | null;
+  market_cap_usd: number | null;
+  liquidity_usd: number | null;
+  volume_24h_usd: number | null;
+  pools: MarketPool[];
+  coverage: MarketProviderCoverage;
+};
+
+export type MarketPeak = {
+  value_usd: number;
+  observed_at: string;
+  observation_id: string;
+  provider: string;
+};
+
+export type TokenMarketState = {
+  address: string;
+  as_of: string;
+  current: MarketObservation | null;
+  observations: MarketObservation[];
+  peaks: {
+    market_cap_usd: MarketPeak | null;
+    liquidity_usd: MarketPeak | null;
+  };
+  coverage: MarketProviderCoverage[];
+  warnings: string[];
+};
+
 export const apiUrl =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 

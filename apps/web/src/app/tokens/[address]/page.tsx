@@ -4,7 +4,12 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import SiteNav from "@/components/SiteNav";
-import { apiUrl, coverageWarnings, type TokenRecord } from "@/lib/tokens";
+import {
+  apiUrl,
+  coverageWarnings,
+  type TokenMarketState,
+  type TokenRecord,
+} from "@/lib/tokens";
 
 function formatTimestamp(value: string): string {
   return new Date(value).toLocaleString();
@@ -14,6 +19,7 @@ export default function TokenDetailPage() {
   const params = useParams<{ address: string }>();
   const address = params?.address ?? "";
   const [token, setToken] = useState<TokenRecord | null>(null);
+  const [marketState, setMarketState] = useState<TokenMarketState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,6 +38,13 @@ export default function TokenDetailPage() {
         }
         if (!response.ok) throw new Error("Token request failed");
         setToken((await response.json()) as TokenRecord);
+        const marketResponse = await fetch(
+          `${apiUrl}/tokens/${encodeURIComponent(address)}/market-state`,
+          { cache: "no-store", signal: controller.signal },
+        );
+        if (marketResponse.ok) {
+          setMarketState((await marketResponse.json()) as TokenMarketState);
+        }
       } catch (reason) {
         if (reason instanceof DOMException && reason.name === "AbortError")
           return;
@@ -44,6 +57,10 @@ export default function TokenDetailPage() {
   }, [address]);
 
   const warnings = token ? coverageWarnings(token.coverage) : [];
+  const marketWarnings = marketState?.warnings ?? [];
+  const currentMarketObservation = marketState?.current;
+  const peakMarketCap = marketState?.peaks?.market_cap_usd;
+  const peakLiquidity = marketState?.peaks?.liquidity_usd;
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-6 py-14 sm:px-10">
@@ -89,6 +106,143 @@ export default function TokenDetailPage() {
               </ul>
             </div>
           ) : null}
+
+          <section className="mb-8 rounded-3xl border border-slate-700 bg-slate-900/80 p-6 sm:p-8">
+            <h2 className="text-xl font-semibold text-white">Market state</h2>
+            {currentMarketObservation ? (
+              <>
+                <p
+                  data-testid="market-state-provider"
+                  className="mt-2 text-sm text-cyan-300"
+                >
+                  Current observation from{" "}
+                  {currentMarketObservation.coverage.provider} at{" "}
+                  {formatTimestamp(currentMarketObservation.observed_at)}
+                </p>
+                <dl
+                  data-testid="market-current-state"
+                  className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+                >
+                  {[
+                    ["Price", currentMarketObservation.price_usd, "USD"],
+                    ["Supply", currentMarketObservation.supply, ""],
+                    [
+                      "Market cap",
+                      currentMarketObservation.market_cap_usd,
+                      "USD",
+                    ],
+                    [
+                      "Liquidity",
+                      currentMarketObservation.liquidity_usd,
+                      "USD",
+                    ],
+                    [
+                      "24H volume",
+                      currentMarketObservation.volume_24h_usd,
+                      "USD",
+                    ],
+                  ].map(([label, value, unit]) => (
+                    <div key={label as string}>
+                      <dt className="text-xs uppercase tracking-wide text-slate-500">
+                        {label}
+                      </dt>
+                      <dd className="mt-1 text-sm text-slate-200">
+                        {value === null ? "UNKNOWN" : `${value} ${unit}`.trim()}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="mt-4 text-sm text-slate-300">
+                  Pools:{" "}
+                  {currentMarketObservation.pools.length === 0
+                    ? "UNKNOWN"
+                    : currentMarketObservation.pools
+                        .map((pool) => `${pool.venue} · ${pool.address}`)
+                        .join(", ")}
+                </p>
+              </>
+            ) : (
+              <p
+                data-testid="market-current-state"
+                className="mt-3 text-sm text-amber-200"
+              >
+                Market state is UNKNOWN.
+              </p>
+            )}
+
+            <dl
+              data-testid="market-peaks"
+              className="mt-6 grid gap-4 sm:grid-cols-2"
+            >
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-slate-500">
+                  Derived peak market cap
+                </dt>
+                <dd className="mt-1 text-sm text-slate-200">
+                  {peakMarketCap
+                    ? `${peakMarketCap.value_usd} USD · ${peakMarketCap.provider}`
+                    : "UNKNOWN"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-slate-500">
+                  Derived peak liquidity
+                </dt>
+                <dd className="mt-1 text-sm text-slate-200">
+                  {peakLiquidity
+                    ? `${peakLiquidity.value_usd} USD · ${peakLiquidity.provider}`
+                    : "UNKNOWN"}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="mt-6 overflow-x-auto">
+              <h3 className="text-sm font-semibold text-white">
+                Historical observations
+              </h3>
+              <table
+                data-testid="market-history"
+                className="mt-3 w-full text-left text-xs text-slate-300"
+              >
+                <thead className="text-slate-500">
+                  <tr>
+                    <th>As of</th>
+                    <th>Price</th>
+                    <th>Market cap</th>
+                    <th>Liquidity</th>
+                    <th>Provider</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(marketState?.observations ?? []).map((observation) => (
+                    <tr
+                      key={observation.observation_id}
+                      className="border-t border-slate-800"
+                    >
+                      <td className="py-2">
+                        {formatTimestamp(observation.observed_at)}
+                      </td>
+                      <td>{observation.price_usd ?? "UNKNOWN"}</td>
+                      <td>{observation.market_cap_usd ?? "UNKNOWN"}</td>
+                      <td>{observation.liquidity_usd ?? "UNKNOWN"}</td>
+                      <td>{observation.coverage.provider}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {marketWarnings.length > 0 ? (
+              <div
+                data-testid="market-state-warnings"
+                role="alert"
+                className="mt-5 text-sm text-amber-200"
+              >
+                {marketWarnings.map((warning) => (
+                  <p key={warning}>UNKNOWN or incomplete — {warning}</p>
+                ))}
+              </div>
+            ) : null}
+          </section>
 
           <section className="mb-8 rounded-3xl border border-slate-700 bg-slate-900/80 p-6 sm:p-8">
             <h2 className="text-xl font-semibold text-white">Provenance</h2>

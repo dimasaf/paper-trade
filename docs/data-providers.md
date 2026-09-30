@@ -138,6 +138,24 @@ Legend: **cheap/free** = ≤$50/mo or free tier; **expensive** = requires ≥$20
 
 ---
 
+## 3.11 Recorded Token market-state fallback order
+
+The deterministic market-state Adapter records each source response as one
+provider-native observation; it never fills a Dexscreener snapshot with a
+Jupiter price or a GeckoTerminal pool value. For a current observation it tries
+**Dexscreener**, then **GeckoTerminal**, then **Jupiter**. A candidate is usable
+only while it is inside its provider-declared freshness interval. Older records
+remain historical evidence, and their market-cap and liquidity peaks are
+calculated from the stored observations with the winning provider and timestamp
+retained. Provider omissions, retries, and rate-limit outcomes are coverage
+warnings and remain `UNKNOWN`; they never become zero or a safe value.
+
+This order follows the documented capability split above: Dexscreener is the
+current pair snapshot, GeckoTerminal supplies pools/OHLCV, and Jupiter is a
+price-only fallback that can omit inactive Tokens. It is intentionally encoded
+in `DOCUMENTED_MARKET_FALLBACK_ORDER` and exercised only with recorded provider
+responses in deterministic tests.
+
 ## 4. Gaps and risks (honest limits)
 
 1. **Historical liquidity is the single biggest gap.** Per-change pool balances are documented only by Bitquery, at $210–$400/mo for Solana archive, and even there "liquidity" includes out-of-range CLMM liquidity. Dexscreener and GeckoTerminal give current snapshots only. If the project's central question depends on "how did liquidity/price evolve as the token died?", either budget Bitquery or run your own vault-balance reconstruction.

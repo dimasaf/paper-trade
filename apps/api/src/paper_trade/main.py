@@ -3,6 +3,7 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from time import perf_counter
 from typing import Optional
 from uuid import uuid4
@@ -20,6 +21,12 @@ from paper_trade.health import (
     HealthService,
     RuntimeHealthService,
     StartupHealthService,
+)
+from paper_trade.market_state import (
+    MarketStateStore,
+    PostgresMarketStateStore,
+    TokenMarketState,
+    TokenMarketStateService,
 )
 from paper_trade.observability import configure_logging
 from paper_trade.probes import DatabaseProbe, RedisProbe, WorkerProbe
@@ -52,6 +59,7 @@ def create_app(
     settings: Optional[Settings] = None,
     research_configuration_store: Optional[ResearchConfigurationStore] = None,
     token_store: Optional[TokenStore] = None,
+    market_state_store: Optional[MarketStateStore] = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
 
@@ -78,6 +86,9 @@ def create_app(
             research_configuration_store or PostgresResearchConfigurationStore(engine)
         )
         application.state.token_store = token_store or PostgresTokenStore(engine)
+        application.state.market_state_store = (
+            market_state_store or PostgresMarketStateStore(engine)
+        )
         try:
             yield
         finally:
@@ -88,6 +99,7 @@ def create_app(
     app.state.health_service = health_service or StartupHealthService()
     app.state.research_configuration_store = research_configuration_store
     app.state.token_store = token_store
+    app.state.market_state_store = market_state_store
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(
@@ -178,6 +190,12 @@ def create_app(
             raise HTTPException(status_code=503, detail="Token store is unavailable")
         return store
 
+    def market_state_service() -> TokenMarketStateService:
+        store = app.state.market_state_store
+        if store is None:
+            raise HTTPException(status_code=503, detail="Market state store is unavailable")
+        return TokenMarketStateService(store)
+
     def token_service() -> TokenRegistrationService:
         configuration = app.state.research_configuration_store
         if configuration is None:
@@ -208,6 +226,21 @@ def create_app(
                 detail=f"Token {address} is not registered",
             )
         return token
+
+    @app.get("/tokens/{address}/market-state", response_model=TokenMarketState)
+    async def token_market_state(
+        address: str,
+        as_of: Optional[datetime] = None,
+    ) -> TokenMarketState:
+        if await tokens_store().get(address) is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Token {address} is not registered",
+            )
+        return await market_state_service().state(
+            address,
+            as_of or datetime.now(timezone.utc),
+        )
 
     @app.get("/health", response_model=HealthResponse)
     async def health(request: Request) -> HealthResponse:
