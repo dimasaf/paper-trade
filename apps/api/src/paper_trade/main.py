@@ -88,8 +88,8 @@ def create_app(
             research_configuration_store or PostgresResearchConfigurationStore(engine)
         )
         application.state.token_store = token_store or PostgresTokenStore(engine)
-        application.state.market_state_store = (
-            market_state_store or PostgresMarketStateStore(engine)
+        application.state.market_state_store = market_state_store or PostgresMarketStateStore(
+            engine
         )
         try:
             yield
