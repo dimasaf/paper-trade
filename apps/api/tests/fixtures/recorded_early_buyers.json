@@ -1,0 +1,30 @@
+{
+  "coverage": {
+    "provider": "HELIUS",
+    "requested_as_of": "2026-09-28T10:00:00Z",
+    "as_of_start": "2026-09-28T09:00:00Z",
+    "as_of_end": "2026-09-28T09:30:00Z",
+    "complete": false,
+    "freshness_seconds": 60,
+    "commitment": "confirmed",
+    "unknown_fields": ["price_usd", "liquidity_usd"],
+    "warnings": ["Recorded fixture has incomplete entry coverage"]
+  },
+  "transactions": [
+    {
+      "wallet_address": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+      "signature": "recorded-early-buy-0001",
+      "movement_index": 0,
+      "slot": 314159266,
+      "chain_time": "2026-09-28T09:05:00Z",
+      "observed_at": "2026-09-28T09:05:10Z",
+      "succeeded": true,
+      "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+      "movement_type": "BUY",
+      "quantity": 10,
+      "notional_usd": null,
+      "venue": "Raydium",
+      "evidence": ["recorded Helius SWAP"]
+    }
+  ]
+}

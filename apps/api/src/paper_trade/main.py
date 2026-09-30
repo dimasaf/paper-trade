@@ -22,6 +22,13 @@ from paper_trade.health import (
     RuntimeHealthService,
     StartupHealthService,
 )
+from paper_trade.historical_winners import (
+    EarlyBuyerSource,
+    HistoricalWinnerCohortRequest,
+    HistoricalWinnerDiscovery,
+    HistoricalWinnerDiscoveryService,
+    HistoricalWinnerDiscoveryStore,
+)
 from paper_trade.market_state import (
     MarketStateStore,
     PostgresMarketStateStore,
@@ -62,6 +69,8 @@ def create_app(
     token_store: Optional[TokenStore] = None,
     market_state_store: Optional[MarketStateStore] = None,
     wallet_accounting_store: Optional[WalletAccountingStore] = None,
+    early_buyer_source: Optional[EarlyBuyerSource] = None,
+    historical_winner_discovery_store: Optional[HistoricalWinnerDiscoveryStore] = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
 
@@ -103,6 +112,8 @@ def create_app(
     app.state.token_store = token_store
     app.state.market_state_store = market_state_store
     app.state.wallet_accounting_store = wallet_accounting_store
+    app.state.early_buyer_source = early_buyer_source
+    app.state.historical_winner_discovery_store = historical_winner_discovery_store
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(
@@ -193,16 +204,35 @@ def create_app(
             raise HTTPException(status_code=503, detail="Token store is unavailable")
         return store
 
-    def market_state_service() -> TokenMarketStateService:
+    def market_states_store() -> MarketStateStore:
         store = app.state.market_state_store
         if store is None:
             raise HTTPException(status_code=503, detail="Market state store is unavailable")
-        return TokenMarketStateService(store)
+        return store
+
+    def market_state_service() -> TokenMarketStateService:
+        return TokenMarketStateService(market_states_store())
 
     def wallet_store() -> WalletAccountingStore:
         store = app.state.wallet_accounting_store
         if store is None:
             raise HTTPException(status_code=503, detail="Wallet accounting store is unavailable")
+        return store
+
+    def historical_winner_service() -> HistoricalWinnerDiscoveryService:
+        source = app.state.early_buyer_source
+        if source is None:
+            raise HTTPException(status_code=503, detail="Early-buyer source is unavailable")
+        return HistoricalWinnerDiscoveryService(
+            token_store=tokens_store(),
+            market_state_store=market_states_store(),
+            early_buyer_source=source,
+        )
+
+    def historical_winner_store() -> HistoricalWinnerDiscoveryStore:
+        store = app.state.historical_winner_discovery_store
+        if store is None:
+            raise HTTPException(status_code=503, detail="Historical winner discovery store is unavailable")
         return store
 
     def token_service() -> TokenRegistrationService:
@@ -250,6 +280,29 @@ def create_app(
             address,
             as_of or datetime.now(timezone.utc),
         )
+
+    @app.post(
+        "/discovery/historical-winners",
+        response_model=HistoricalWinnerDiscovery,
+        status_code=201,
+    )
+    async def discover_historical_winners(
+        cohort: HistoricalWinnerCohortRequest,
+    ) -> HistoricalWinnerDiscovery:
+        discovery = await historical_winner_service().discover(
+            cohort, await configuration_store().get_active()
+        )
+        try:
+            return await historical_winner_store().save(discovery)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.get("/discovery/historical-winners/latest", response_model=HistoricalWinnerDiscovery)
+    async def latest_historical_winner_discovery() -> HistoricalWinnerDiscovery:
+        discovery = await historical_winner_store().latest()
+        if discovery is None:
+            raise HTTPException(status_code=404, detail="No historical winner cohort has been run")
+        return discovery
 
     @app.get("/wallets/{address}/accounting", response_model=WalletAccounting)
     async def wallet_accounting_detail(
