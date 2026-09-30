@@ -10,11 +10,11 @@ import json
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, Literal, Optional, Protocol
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from paper_trade.launch_events import _is_solana_public_key
 
