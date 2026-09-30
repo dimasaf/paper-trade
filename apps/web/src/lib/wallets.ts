@@ -32,6 +32,88 @@ type WalletPnl = {
   total_usd: number | null;
 };
 
+export type Distribution = {
+  count: number;
+  average: number | null;
+  median: number | null;
+  minimum: number | null;
+  maximum: number | null;
+};
+
+export type WalletBehavior = {
+  address: string;
+  as_of: string;
+  metric_definitions: string[];
+  windows: Array<{
+    period: "24H" | "7D" | "30D" | "90D" | "ALL_TIME";
+    starts_at: string | null;
+    as_of: string;
+    definition: string;
+    realized_pnl_usd: number;
+    unrealized_pnl_usd: number | null;
+    total_pnl_usd: number | null;
+    roi_percent: number | null;
+    win_rate_percent: number | null;
+    trade_count: number;
+    winning_tokens: number;
+    losing_tokens: number;
+    average_win_usd: number | null;
+    median_win_usd: number | null;
+    average_loss_usd: number | null;
+    median_loss_usd: number | null;
+    profit_factor: number | null;
+    max_drawdown_usd: number;
+    largest_win_usd: number | null;
+    largest_loss_usd: number | null;
+    position_size_usd: Distribution;
+    holding_time_seconds: Distribution;
+    consistency: {
+      profit_concentration: {
+        top_one_percent: number | null;
+        top_three_percent: number | null;
+        top_five_percent: number | null;
+      };
+      profitable_days: number;
+      profitable_weeks: number;
+      profitable_months: number;
+    };
+    meme: {
+      entry_count: number;
+      early_entry_rate_percent: number | null;
+      creation_to_entry_latency_seconds: Distribution;
+      entry_market_cap_usd: Distribution;
+      entry_liquidity_usd: Distribution;
+      rug_or_dead_exposure_rate_percent: number | null;
+      migration_success_rate_percent: number | null;
+      token_activity_per_active_day: number | null;
+    };
+    unknowns: string[];
+  }>;
+  classifications: Array<{
+    name: string;
+    description: string;
+    evidence: string[];
+    score_effect: "NONE";
+  }>;
+  flags: Array<{
+    name: string;
+    wording: string;
+    evidence: string[];
+    confidence: "LOW" | "MEDIUM" | "HIGH";
+    coverage: Array<{
+      source: string;
+      complete: boolean;
+      unknown_fields: string[];
+    }>;
+  }>;
+  coverage: Array<{
+    source: string;
+    complete: boolean;
+    unknown_fields: string[];
+  }>;
+  warnings: string[];
+};
+
 export type WalletAccounting = {
   address: string;
   as_of: string;

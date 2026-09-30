@@ -68,7 +68,9 @@ class TokenEarlyBuyerHistory(HistoricalWinnerModel):
     def validate_token_address(self) -> "TokenEarlyBuyerHistory":
         if not _is_solana_public_key(self.token_address):
             raise ValueError("token_address must be a valid Solana public key")
-        if any(transaction.token_address != self.token_address for transaction in self.transactions):
+        if any(
+            transaction.token_address != self.token_address for transaction in self.transactions
+        ):
             raise ValueError("early-buyer transaction token_address must match the requested Token")
         return self
 
@@ -89,7 +91,10 @@ class RecordedEarlyBuyerSource:
         coverage: WalletHistoryCoverage,
     ) -> None:
         self._pages = [
-            [RecordedEarlyBuyerTransaction.model_validate(transaction.model_dump()) for transaction in page]
+            [
+                RecordedEarlyBuyerTransaction.model_validate(transaction.model_dump())
+                for transaction in page
+            ]
             for page in pages
         ]
         self._coverage = WalletHistoryCoverage.model_validate(coverage.model_dump())
@@ -102,7 +107,11 @@ class RecordedEarlyBuyerSource:
             for transaction in page:
                 if transaction.token_address != token_address or transaction.chain_time > as_of:
                     continue
-                key = (transaction.wallet_address, transaction.signature, transaction.movement_index)
+                key = (
+                    transaction.wallet_address,
+                    transaction.signature,
+                    transaction.movement_index,
+                )
                 existing = unique.get(key)
                 if existing is not None and existing != transaction:
                     raise ValueError("conflicting recorded early-buyer transaction")
@@ -365,7 +374,9 @@ class HistoricalWinnerDiscoveryService:
             candidates.setdefault(transaction.wallet_address, []).append(
                 DiscoveryCriterion(
                     criterion="successful_buy",
-                    observed=("BUY" if transaction.movement_type == "BUY" else transaction.movement_type)
+                    observed=(
+                        "BUY" if transaction.movement_type == "BUY" else transaction.movement_type
+                    )
                     + (" succeeded" if transaction.succeeded else " failed"),
                     threshold="successful BUY",
                     passed=is_buy,
@@ -436,12 +447,20 @@ def _initial_market_cap(
 
 
 def _peak_market_cap(observations: Sequence[MarketObservation]) -> Optional[MarketObservation]:
-    candidates = [observation for observation in observations if observation.market_cap_usd is not None]
-    return max(candidates, key=lambda observation: float(observation.market_cap_usd or 0)) if candidates else None
+    candidates = [
+        observation for observation in observations if observation.market_cap_usd is not None
+    ]
+    return (
+        max(candidates, key=lambda observation: float(observation.market_cap_usd or 0))
+        if candidates
+        else None
+    )
 
 
 def _latest_observation(observations: Sequence[MarketObservation]) -> Optional[MarketObservation]:
-    return max(observations, key=lambda observation: observation.observed_at) if observations else None
+    return (
+        max(observations, key=lambda observation: observation.observed_at) if observations else None
+    )
 
 
 def _entry_bucket(market_cap_usd: Optional[float], buckets: Sequence[float]) -> str:

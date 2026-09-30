@@ -3,6 +3,121 @@ import { expect, test } from "@playwright/test";
 const walletAddress = "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1";
 const tokenAddress = "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr";
 
+const behavior = {
+  address: walletAddress,
+  as_of: "2026-09-28T10:00:00Z",
+  metric_definitions: [
+    "Clean FIFO metrics use only evidence available at the requested as-of time.",
+  ],
+  windows: ["24H", "7D", "30D", "90D", "ALL_TIME"].map((period) => ({
+    period,
+    starts_at: period === "ALL_TIME" ? null : "2026-09-27T10:00:00Z",
+    as_of: "2026-09-28T10:00:00Z",
+    definition:
+      "Clean FIFO metrics; only facts available at the requested as-of time are included.",
+    realized_pnl_usd: 21.5,
+    unrealized_pnl_usd: 5.7,
+    total_pnl_usd: 27.2,
+    roi_percent: 59.39,
+    win_rate_percent: 100,
+    trade_count: 2,
+    winning_tokens: 1,
+    losing_tokens: 0,
+    average_win_usd: 10.75,
+    median_win_usd: 10.75,
+    average_loss_usd: null,
+    median_loss_usd: null,
+    profit_factor: null,
+    max_drawdown_usd: 0,
+    largest_win_usd: 17.67,
+    largest_loss_usd: null,
+    position_size_usd: {
+      count: 2,
+      average: 26,
+      median: 26,
+      minimum: 21,
+      maximum: 31,
+    },
+    holding_time_seconds: {
+      count: 2,
+      average: 750,
+      median: 750,
+      minimum: 600,
+      maximum: 900,
+    },
+    consistency: {
+      profit_concentration: {
+        top_one_percent: 100,
+        top_three_percent: 100,
+        top_five_percent: 100,
+      },
+      profitable_days: 1,
+      profitable_weeks: 1,
+      profitable_months: 1,
+    },
+    meme: {
+      entry_count: 1,
+      early_entry_rate_percent: 100,
+      creation_to_entry_latency_seconds: {
+        count: 1,
+        average: 30,
+        median: 30,
+        minimum: 30,
+        maximum: 30,
+      },
+      entry_market_cap_usd: {
+        count: 1,
+        average: 12000,
+        median: 12000,
+        minimum: 12000,
+        maximum: 12000,
+      },
+      entry_liquidity_usd: {
+        count: 1,
+        average: 8000,
+        median: 8000,
+        minimum: 8000,
+        maximum: 8000,
+      },
+      rug_or_dead_exposure_rate_percent: 0,
+      migration_success_rate_percent: 100,
+      token_activity_per_active_day: 1,
+    },
+    unknowns: ["Historical liquidity remains UNKNOWN."],
+  })),
+  classifications: [
+    {
+      name: "EARLY_BUYER",
+      description: "Descriptive only.",
+      evidence: ["Recorded early entry."],
+      score_effect: "NONE",
+    },
+  ],
+  flags: [
+    {
+      name: "RAPID_TOKEN_ENTRY",
+      wording: "Timing can warrant review and does not identify intent.",
+      evidence: ["30 seconds after recorded creation."],
+      confidence: "MEDIUM",
+      coverage: [
+        {
+          source: "RECORDED_MARKET_EVIDENCE",
+          complete: false,
+          unknown_fields: ["historical_liquidity"],
+        },
+      ],
+    },
+  ],
+  coverage: [
+    {
+      source: "RECORDED_MARKET_EVIDENCE",
+      complete: false,
+      unknown_fields: ["historical_liquidity"],
+    },
+  ],
+  warnings: ["Historical liquidity remains UNKNOWN."],
+};
+
 const accounting = {
   address: walletAddress,
   as_of: "2026-09-28T10:00:00Z",
@@ -139,6 +254,9 @@ test("Wallet detail shows FIFO accounting, contamination, failed and unknown his
   await page.route("**/wallets/**/accounting*", async (route) => {
     await route.fulfill({ json: accounting });
   });
+  await page.route("**/wallets/**/behavior*", async (route) => {
+    await route.fulfill({ json: behavior });
+  });
 
   await page.goto(`/wallets/${walletAddress}`);
 
@@ -164,5 +282,17 @@ test("Wallet detail shows FIFO accounting, contamination, failed and unknown his
   await expect(page.getByTestId("wallet-coverage")).toContainText("HELIUS");
   await expect(page.getByTestId("source-transactions")).toContainText(
     "recorded-wallet-buy-0001",
+  );
+  await expect(page.getByTestId("behavior-definitions")).toContainText(
+    "Clean FIFO",
+  );
+  await expect(page.getByTestId("behavior-windows")).toContainText(
+    "90D window",
+  );
+  await expect(page.getByTestId("behavior-classifications")).toContainText(
+    "EARLY_BUYER",
+  );
+  await expect(page.getByTestId("behavior-risk-flags")).toContainText(
+    "does not identify intent",
   );
 });

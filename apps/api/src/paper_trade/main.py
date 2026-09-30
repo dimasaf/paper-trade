@@ -51,6 +51,7 @@ from paper_trade.tokens import (
     TokenStore,
 )
 from paper_trade.wallet_accounting import WalletAccounting, WalletAccountingStore
+from paper_trade.wallet_behavior import WalletBehavior, WalletBehaviorStore
 
 http_logger = logging.getLogger("paper_trade.http")
 
@@ -69,6 +70,7 @@ def create_app(
     token_store: Optional[TokenStore] = None,
     market_state_store: Optional[MarketStateStore] = None,
     wallet_accounting_store: Optional[WalletAccountingStore] = None,
+    wallet_behavior_store: Optional[WalletBehaviorStore] = None,
     early_buyer_source: Optional[EarlyBuyerSource] = None,
     historical_winner_discovery_store: Optional[HistoricalWinnerDiscoveryStore] = None,
 ) -> FastAPI:
@@ -112,6 +114,7 @@ def create_app(
     app.state.token_store = token_store
     app.state.market_state_store = market_state_store
     app.state.wallet_accounting_store = wallet_accounting_store
+    app.state.wallet_behavior_store = wallet_behavior_store
     app.state.early_buyer_source = early_buyer_source
     app.state.historical_winner_discovery_store = historical_winner_discovery_store
     app.add_middleware(
@@ -219,6 +222,12 @@ def create_app(
             raise HTTPException(status_code=503, detail="Wallet accounting store is unavailable")
         return store
 
+    def wallet_behavior_store_or_unavailable() -> WalletBehaviorStore:
+        store = app.state.wallet_behavior_store
+        if store is None:
+            raise HTTPException(status_code=503, detail="Wallet behavior store is unavailable")
+        return store
+
     def historical_winner_service() -> HistoricalWinnerDiscoveryService:
         source = app.state.early_buyer_source
         if source is None:
@@ -232,7 +241,9 @@ def create_app(
     def historical_winner_store() -> HistoricalWinnerDiscoveryStore:
         store = app.state.historical_winner_discovery_store
         if store is None:
-            raise HTTPException(status_code=503, detail="Historical winner discovery store is unavailable")
+            raise HTTPException(
+                status_code=503, detail="Historical winner discovery store is unavailable"
+            )
         return store
 
     def token_service() -> TokenRegistrationService:
@@ -310,6 +321,15 @@ def create_app(
         as_of: Optional[datetime] = None,
     ) -> WalletAccounting:
         return await wallet_store().accounting(address, as_of or datetime.now(timezone.utc))
+
+    @app.get("/wallets/{address}/behavior", response_model=WalletBehavior)
+    async def wallet_behavior_detail(
+        address: str,
+        as_of: Optional[datetime] = None,
+    ) -> WalletBehavior:
+        return await wallet_behavior_store_or_unavailable().behavior(
+            address, as_of or datetime.now(timezone.utc)
+        )
 
     @app.get("/health", response_model=HealthResponse)
     async def health(request: Request) -> HealthResponse:
