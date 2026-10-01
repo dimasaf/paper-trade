@@ -26,4 +26,4 @@ curl --fail --silent "http://127.0.0.1:${API_PORT}/health" >/tmp/paper-trade-sta
 STACK_E2E=1 \
   PLAYWRIGHT_EXTERNAL_SERVER=1 \
   PLAYWRIGHT_BASE_URL="http://127.0.0.1:${WEB_PORT}" \
-  pnpm exec playwright test tests/e2e/stack.spec.ts
+  pnpm exec playwright test tests/e2e/stack.spec.ts tests/e2e/wallets.spec.ts

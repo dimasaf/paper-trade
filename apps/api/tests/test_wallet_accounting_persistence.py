@@ -64,7 +64,6 @@ async def test_recorded_accounting_contract_persists_idempotently_and_isolates_a
         "recorded-wallet-buy-0002",
         "recorded-wallet-airdrop-0001",
         "recorded-wallet-transfer-in-0001",
-        "recorded-wallet-sell-0001",
     ]
     assert earlier.mark_price_provenance == []
     assert later.pnl.clean.total_usd == pytest.approx(27.2)
@@ -88,3 +87,33 @@ def test_recorded_accounting_ingestion_and_detail_http_contract() -> None:
     assert replayed.json()["created"] is False
     assert detail.status_code == 200
     assert detail.json()["pnl"]["clean"]["total_usd"] == 27.2
+
+
+def test_recorded_accounting_detail_http_contract_excludes_activity_observed_after_as_of() -> None:
+    client = TestClient(create_app(wallet_accounting_store=InMemoryRecordedWalletAccountingStore()))
+    request = recorded_request()
+    delayed_activity = request.history.activities[0].model_copy(
+        update={
+            "signature": "recorded-wallet-observed-after-as-of-0001",
+            "chain_time": at("2026-09-28T09:19:00Z"),
+            "observed_at": at("2026-09-28T09:21:00Z"),
+        }
+    )
+    request = request.model_copy(
+        update={
+            "history": request.history.model_copy(
+                update={"activities": [*request.history.activities, delayed_activity]}
+            )
+        }
+    )
+
+    created = client.post(
+        f"/wallets/{WALLET}/accounting/recordings", json=request.model_dump(mode="json")
+    )
+    detail = client.get(f"/wallets/{WALLET}/accounting?as_of=2026-09-28T09:20:00Z")
+
+    assert created.status_code == 201
+    assert detail.status_code == 200
+    assert "recorded-wallet-observed-after-as-of-0001" not in {
+        activity["signature"] for activity in detail.json()["source_transactions"]
+    }

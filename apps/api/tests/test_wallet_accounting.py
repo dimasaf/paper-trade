@@ -68,7 +68,30 @@ async def test_recorded_history_contract_keeps_failed_transactions() -> None:
     assert earlier.coverage.requested_as_of == at("2026-09-28T09:20:00Z")
     assert [activity.signature for activity in earlier.activities][
         -1
-    ] == "recorded-wallet-sell-0001"
+    ] == "recorded-wallet-transfer-in-0001"
+
+
+@pytest.mark.asyncio
+async def test_recorded_history_contract_excludes_activity_observed_after_as_of() -> None:
+    document = json.loads(FIXTURE_PATH.read_text())
+    coverage = WalletHistoryCoverage.model_validate(document["coverage"])
+    activities = [WalletActivity.model_validate(item) for item in document["activities"]]
+    activities.append(
+        activities[0].model_copy(
+            update={
+                "signature": "recorded-wallet-observed-after-as-of-0001",
+                "chain_time": at("2026-09-28T09:19:00Z"),
+                "observed_at": at("2026-09-28T09:21:00Z"),
+            }
+        )
+    )
+    source = RecordedWalletHistorySource(pages=[activities], coverage=coverage)
+
+    history = await source.wallet_history(WALLET, at("2026-09-28T09:20:00Z"))
+
+    assert "recorded-wallet-observed-after-as-of-0001" not in {
+        activity.signature for activity in history.activities
+    }
 
 
 @pytest.mark.asyncio

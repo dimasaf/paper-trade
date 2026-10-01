@@ -280,6 +280,24 @@ test("running Docker stack persists recorded Wallet accounting for the detail jo
             },
           ],
         },
+        {
+          signature: "stack-wallet-accounting-observed-after-as-of-0002",
+          slot: 314159801,
+          chain_time: "2020-01-01T00:00:02Z",
+          observed_at: "2100-01-01T00:00:00Z",
+          succeeded: true,
+          fee_usd: 0,
+          movements: [
+            {
+              token_address: tokenAddress,
+              movement_type: "SELL",
+              quantity: 10,
+              notional_usd: 100,
+              venue: "Raydium",
+              evidence: ["recorded after requested as-of time"],
+            },
+          ],
+        },
       ],
       coverage: {
         provider: "HELIUS",
@@ -310,7 +328,13 @@ test("running Docker stack persists recorded Wallet accounting for the detail jo
     `${apiUrl}/wallets/${stackWalletAddress}/accounting?as_of=2020-01-01T00:00:03Z`,
   );
   expect(accountingResponse.status()).toBe(200);
-  expect((await accountingResponse.json()).pnl.clean.total_usd).toBe(30);
+  const accounting = await accountingResponse.json();
+  expect(accounting.pnl.clean.total_usd).toBe(30);
+  expect(accounting.source_transactions).not.toContainEqual(
+    expect.objectContaining({
+      signature: "stack-wallet-accounting-observed-after-as-of-0002",
+    }),
+  );
 
   await page.goto(`/wallets/${stackWalletAddress}`);
 

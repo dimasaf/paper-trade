@@ -124,7 +124,7 @@ class RecordedWalletHistorySource:
         unique: dict[str, WalletActivity] = {}
         for page in self._pages:
             for activity in page:
-                if activity.chain_time > as_of:
+                if activity.chain_time > as_of or activity.observed_at > as_of:
                     continue
                 existing = unique.get(activity.signature)
                 if existing is not None and existing != activity:
@@ -722,6 +722,7 @@ class PostgresWalletAccountingStore:
                     SELECT activity FROM wallet_accounting_activities
                     WHERE wallet_address = :wallet_address
                       AND chain_time <= :as_of
+                      AND observed_at <= :as_of
                     ORDER BY chain_time, observed_at, signature
                     """
                 ),
