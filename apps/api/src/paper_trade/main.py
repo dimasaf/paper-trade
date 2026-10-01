@@ -51,7 +51,12 @@ from paper_trade.tokens import (
     TokenStore,
 )
 from paper_trade.wallet_accounting import WalletAccounting, WalletAccountingStore
-from paper_trade.wallet_behavior import WalletBehavior, WalletBehaviorStore
+from paper_trade.wallet_behavior import (
+    StoredMarketEvidenceSource,
+    WalletBehavior,
+    WalletBehaviorService,
+    WalletBehaviorStore,
+)
 
 http_logger = logging.getLogger("paper_trade.http")
 
@@ -102,6 +107,11 @@ def create_app(
         application.state.market_state_store = market_state_store or PostgresMarketStateStore(
             engine
         )
+        if wallet_behavior_store is None and wallet_accounting_store is not None:
+            application.state.wallet_behavior_store = WalletBehaviorService(
+                wallet_accounting_store,
+                StoredMarketEvidenceSource(application.state.market_state_store),
+            )
         try:
             yield
         finally:
@@ -115,6 +125,15 @@ def create_app(
     app.state.market_state_store = market_state_store
     app.state.wallet_accounting_store = wallet_accounting_store
     app.state.wallet_behavior_store = wallet_behavior_store
+    if (
+        wallet_behavior_store is None
+        and wallet_accounting_store is not None
+        and market_state_store is not None
+    ):
+        app.state.wallet_behavior_store = WalletBehaviorService(
+            wallet_accounting_store,
+            StoredMarketEvidenceSource(market_state_store),
+        )
     app.state.early_buyer_source = early_buyer_source
     app.state.historical_winner_discovery_store = historical_winner_discovery_store
     app.add_middleware(

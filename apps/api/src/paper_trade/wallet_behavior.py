@@ -14,6 +14,7 @@ from typing import Literal, Optional, Protocol
 
 from pydantic import Field, model_validator
 
+from paper_trade.market_state import MarketStateStore
 from paper_trade.wallet_accounting import (
     WalletAccounting,
     WalletAccountingModel,
@@ -40,7 +41,8 @@ class WalletMarketEvidence(WalletAccountingModel):
     token_created_at: Optional[datetime] = None
     entry_market_cap_usd: Optional[float] = Field(default=None, ge=0)
     entry_liquidity_usd: Optional[float] = Field(default=None, ge=0)
-    rug_or_dead: Optional[bool] = None
+    rugged: Optional[bool] = None
+    dead: Optional[bool] = None
     migration_succeeded: Optional[bool] = None
     evidence: list[str] = Field(min_length=1)
 
@@ -79,6 +81,57 @@ class MarketEvidenceSource(Protocol):
         """Return only evidence observed no later than the requested as-of time."""
 
 
+class StoredMarketEvidenceSource:
+    """Adapt persisted point-in-time Token market observations into behavior evidence."""
+
+    def __init__(self, store: MarketStateStore) -> None:
+        self._store = store
+
+    async def market_evidence(
+        self, token_addresses: Sequence[str], as_of: datetime
+    ) -> WalletMarketEvidenceResult:
+        evidence: list[WalletMarketEvidence] = []
+        coverage_warnings: list[str] = []
+        for address in sorted(token_addresses):
+            observations = await self._store.observations(address, as_of)
+            if not observations:
+                coverage_warnings.append(
+                    f"{address} has no stored market observation at the requested as-of time"
+                )
+                continue
+            for observation in observations:
+                evidence.append(
+                    WalletMarketEvidence(
+                        token_address=address,
+                        observed_at=observation.observed_at,
+                        entry_market_cap_usd=observation.market_cap_usd,
+                        entry_liquidity_usd=observation.liquidity_usd,
+                        evidence=[
+                            f"stored {observation.coverage.provider} observation "
+                            f"{observation.observation_id}"
+                        ],
+                    )
+                )
+        return WalletMarketEvidenceResult(
+            evidence=evidence,
+            coverage=MarketEvidenceCoverage(
+                provider="RECORDED_MARKET_EVIDENCE",
+                requested_as_of=as_of,
+                as_of_start=as_of,
+                as_of_end=as_of,
+                complete=False,
+                unknown_fields=[
+                    "token_created_at",
+                    "rugged",
+                    "dead",
+                    "migration_succeeded",
+                ],
+                warnings=coverage_warnings
+                or ["Stored market observations omit behavioral lifecycle evidence."],
+            ),
+        )
+
+
 class RecordedMarketEvidenceSource:
     """Fixture-only market-evidence Adapter; it performs no network calls."""
 
@@ -94,15 +147,13 @@ class RecordedMarketEvidenceSource:
         self, token_addresses: Sequence[str], as_of: datetime
     ) -> WalletMarketEvidenceResult:
         requested = set(token_addresses)
-        selected: dict[str, WalletMarketEvidence] = {}
-        for item in self._evidence:
-            if item.token_address not in requested or item.observed_at > as_of:
-                continue
-            current = selected.get(item.token_address)
-            if current is None or item.observed_at > current.observed_at:
-                selected[item.token_address] = item
+        selected = [
+            item
+            for item in self._evidence
+            if item.token_address in requested and item.observed_at <= as_of
+        ]
         return WalletMarketEvidenceResult(
-            evidence=[selected[address] for address in sorted(selected)],
+            evidence=sorted(selected, key=lambda item: (item.token_address, item.observed_at)),
             coverage=self._coverage.model_copy(update={"requested_as_of": as_of}),
         )
 
@@ -136,7 +187,10 @@ class MemeMetrics(WalletAccountingModel):
     creation_to_entry_latency_seconds: Distribution
     entry_market_cap_usd: Distribution
     entry_liquidity_usd: Distribution
-    rug_or_dead_exposure_rate_percent: Optional[float]
+    sub_100k_entry_rate_percent: Optional[float]
+    sub_500k_entry_rate_percent: Optional[float]
+    rug_exposure_rate_percent: Optional[float]
+    dead_token_exposure_rate_percent: Optional[float]
     migration_success_rate_percent: Optional[float]
     token_activity_per_active_day: Optional[float]
 
@@ -271,8 +325,8 @@ class WalletBehaviorService:
             {trade.token_address for trade in accounting.trades if trade.succeeded}
         )
         market = await self._market_evidence_source.market_evidence(token_addresses, as_of)
-        evidence_by_token = {item.token_address: item for item in market.evidence}
         closes, open_lots, position_sizes, entries = self._reconstruct(accounting)
+        evidence_by_token = self._entry_evidence(market.evidence, entries)
         coverage = self._coverage(accounting.coverage, market.coverage)
         windows = [
             self._window(
@@ -381,6 +435,21 @@ class WalletBehaviorService:
             position_sizes,
             entries,
         )
+
+    @staticmethod
+    def _entry_evidence(
+        evidence: Sequence[WalletMarketEvidence], entries: dict[str, datetime]
+    ) -> dict[str, WalletMarketEvidence]:
+        """Select market facts that existed at or before each Wallet's entry."""
+        selected: dict[str, WalletMarketEvidence] = {}
+        for item in evidence:
+            entered_at = entries.get(item.token_address)
+            if entered_at is None or item.observed_at > entered_at:
+                continue
+            current = selected.get(item.token_address)
+            if current is None or item.observed_at > current.observed_at:
+                selected[item.token_address] = item
+        return selected
 
     @staticmethod
     def _coverage(
@@ -545,9 +614,8 @@ class WalletBehaviorService:
             for _, _, item in evidence
             if item and item.entry_liquidity_usd is not None
         ]
-        known_rug = [
-            item.rug_or_dead for _, _, item in evidence if item and item.rug_or_dead is not None
-        ]
+        known_rug = [item.rugged for _, _, item in evidence if item and item.rugged is not None]
+        known_dead = [item.dead for _, _, item in evidence if item and item.dead is not None]
         known_migration = [
             item.migration_succeeded
             for _, _, item in evidence
@@ -564,8 +632,21 @@ class WalletBehaviorService:
             creation_to_entry_latency_seconds=_distribution(latencies),
             entry_market_cap_usd=_distribution(market_caps),
             entry_liquidity_usd=_distribution(liquidity),
-            rug_or_dead_exposure_rate_percent=_round(sum(known_rug) / len(known_rug) * 100)
+            sub_100k_entry_rate_percent=_round(
+                sum(value < 100_000 for value in market_caps) / len(market_caps) * 100
+            )
+            if market_caps
+            else None,
+            sub_500k_entry_rate_percent=_round(
+                sum(value < 500_000 for value in market_caps) / len(market_caps) * 100
+            )
+            if market_caps
+            else None,
+            rug_exposure_rate_percent=_round(sum(known_rug) / len(known_rug) * 100)
             if known_rug
+            else None,
+            dead_token_exposure_rate_percent=_round(sum(known_dead) / len(known_dead) * 100)
+            if known_dead
             else None,
             migration_success_rate_percent=_round(sum(known_migration) / len(known_migration) * 100)
             if known_migration

@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from paper_trade.main import create_app
+from paper_trade.market_state import InMemoryMarketStateStore
 from paper_trade.wallet_accounting import (
     InMemoryWalletAccountingStore,
     RecordedWalletHistorySource,
@@ -33,12 +34,9 @@ def at(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def behavior_store() -> InMemoryWalletBehaviorStore:
+def accounting_store() -> InMemoryWalletAccountingStore:
     history_document = json.loads((FIXTURE_DIRECTORY / "recorded_wallet_history.json").read_text())
-    evidence_document = json.loads(
-        (FIXTURE_DIRECTORY / "recorded_wallet_behavior_evidence.json").read_text()
-    )
-    accounting_store = InMemoryWalletAccountingStore(
+    return InMemoryWalletAccountingStore(
         WalletAccountingService(
             history_source=RecordedWalletHistorySource(
                 pages=[
@@ -56,13 +54,19 @@ def behavior_store() -> InMemoryWalletBehaviorStore:
             ],
         )
     )
+
+
+def behavior_store() -> InMemoryWalletBehaviorStore:
+    evidence_document = json.loads(
+        (FIXTURE_DIRECTORY / "recorded_wallet_behavior_evidence.json").read_text()
+    )
     evidence_source = RecordedMarketEvidenceSource(
         evidence=[
             WalletMarketEvidence.model_validate(item) for item in evidence_document["evidence"]
         ],
         coverage=MarketEvidenceCoverage.model_validate(evidence_document["coverage"]),
     )
-    return InMemoryWalletBehaviorStore(WalletBehaviorService(accounting_store, evidence_source))
+    return InMemoryWalletBehaviorStore(WalletBehaviorService(accounting_store(), evidence_source))
 
 
 @pytest.mark.asyncio
@@ -85,7 +89,10 @@ async def test_recorded_behavior_calculates_all_windows_without_future_evidence(
     assert all_time.meme.creation_to_entry_latency_seconds.median == 30
     assert all_time.meme.entry_market_cap_usd.average == 12000
     assert all_time.meme.entry_liquidity_usd.average == 8000
-    assert all_time.meme.rug_or_dead_exposure_rate_percent == 0
+    assert all_time.meme.sub_100k_entry_rate_percent == 100
+    assert all_time.meme.sub_500k_entry_rate_percent == 100
+    assert all_time.meme.rug_exposure_rate_percent == 0
+    assert all_time.meme.dead_token_exposure_rate_percent == 0
     assert all_time.meme.migration_success_rate_percent == 100
     assert all_time.meme.token_activity_per_active_day == 1
     assert {item.name for item in behavior.classifications} == {"EARLY_BUYER", "SCALPER"}
@@ -122,10 +129,47 @@ def test_wallet_behavior_endpoint_exposes_definitions_windows_classifications_fl
     ]
 
 
-def test_wallet_behavior_endpoint_reports_unavailable_store() -> None:
-    client = TestClient(create_app())
+@pytest.mark.asyncio
+async def test_behavior_uses_only_evidence_at_or_before_wallet_entry() -> None:
+    wallet_store = accounting_store()
+    source = RecordedMarketEvidenceSource(
+        evidence=[
+            WalletMarketEvidence(
+                token_address=TOKEN,
+                observed_at=at("2026-09-28T09:06:00Z"),
+                entry_market_cap_usd=999_999,
+                entry_liquidity_usd=999_999,
+                evidence=["recorded after Wallet entry"],
+            )
+        ],
+        coverage=MarketEvidenceCoverage(
+            provider="RECORDED_MARKET_EVIDENCE",
+            requested_as_of=at("2026-09-28T10:00:00Z"),
+            as_of_start=at("2026-09-28T09:00:00Z"),
+            as_of_end=at("2026-09-28T10:00:00Z"),
+            complete=False,
+            unknown_fields=["entry_market_cap_usd", "entry_liquidity_usd"],
+        ),
+    )
 
-    response = client.get(f"/wallets/{WALLET}/behavior")
+    behavior = await WalletBehaviorService(wallet_store, source).behavior(
+        WALLET, at("2026-09-28T10:00:00Z")
+    )
 
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Wallet behavior store is unavailable"
+    assert behavior.windows[-1].meme.entry_market_cap_usd.average is None
+    assert behavior.windows[-1].meme.entry_liquidity_usd.average is None
+
+
+def test_wallet_behavior_endpoint_composes_a_service_from_accounting_and_market_stores() -> None:
+    wallet_store = accounting_store()
+    client = TestClient(
+        create_app(
+            wallet_accounting_store=wallet_store,
+            market_state_store=InMemoryMarketStateStore(),
+        )
+    )
+
+    response = client.get(f"/wallets/{WALLET}/behavior?as_of=2026-09-28T10:00:00Z")
+
+    assert response.status_code == 200
+    assert response.json()["windows"][-1]["meme"]["entry_market_cap_usd"]["average"] is None

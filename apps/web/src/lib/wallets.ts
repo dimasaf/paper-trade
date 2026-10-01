@@ -83,7 +83,10 @@ export type WalletBehavior = {
       creation_to_entry_latency_seconds: Distribution;
       entry_market_cap_usd: Distribution;
       entry_liquidity_usd: Distribution;
-      rug_or_dead_exposure_rate_percent: number | null;
+      sub_100k_entry_rate_percent: number | null;
+      sub_500k_entry_rate_percent: number | null;
+      rug_exposure_rate_percent: number | null;
+      dead_token_exposure_rate_percent: number | null;
       migration_success_rate_percent: number | null;
       token_activity_per_active_day: number | null;
     };

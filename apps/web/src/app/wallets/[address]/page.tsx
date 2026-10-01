@@ -23,6 +23,7 @@ export default function WalletDetailPage() {
   const address = params?.address ?? "";
   const [accounting, setAccounting] = useState<WalletAccounting | null>(null);
   const [behavior, setBehavior] = useState<WalletBehavior | null>(null);
+  const [asOf] = useState(() => new Date().toISOString());
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,7 +32,7 @@ export default function WalletDetailPage() {
     async function loadAccounting() {
       try {
         const response = await fetch(
-          `${apiUrl}/wallets/${encodeURIComponent(address)}/accounting`,
+          `${apiUrl}/wallets/${encodeURIComponent(address)}/accounting?as_of=${encodeURIComponent(asOf)}`,
           { cache: "no-store", signal: controller.signal },
         );
         if (response.status === 404) {
@@ -48,7 +49,7 @@ export default function WalletDetailPage() {
     }
     void loadAccounting();
     return () => controller.abort();
-  }, [address]);
+  }, [address, asOf]);
 
   useEffect(() => {
     if (!address) return;
@@ -56,7 +57,7 @@ export default function WalletDetailPage() {
     async function loadBehavior() {
       try {
         const response = await fetch(
-          `${apiUrl}/wallets/${encodeURIComponent(address)}/behavior`,
+          `${apiUrl}/wallets/${encodeURIComponent(address)}/behavior?as_of=${encodeURIComponent(asOf)}`,
           { cache: "no-store", signal: controller.signal },
         );
         if (response.ok) setBehavior((await response.json()) as WalletBehavior);
@@ -67,7 +68,7 @@ export default function WalletDetailPage() {
     }
     void loadBehavior();
     return () => controller.abort();
-  }, [address]);
+  }, [address, asOf]);
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-6 py-14 sm:px-10">
@@ -366,9 +367,11 @@ function BehaviorSummary({ behavior }: { behavior: WalletBehavior }) {
               creation-to-entry latency ·{" "}
               {amount(window.meme.entry_market_cap_usd.average)} entry market
               cap · {amount(window.meme.entry_liquidity_usd.average)} entry
-              liquidity ·{" "}
-              {percent(window.meme.rug_or_dead_exposure_rate_percent)} rug/dead
-              exposure · {percent(window.meme.migration_success_rate_percent)}{" "}
+              liquidity · {percent(window.meme.sub_100k_entry_rate_percent)}{" "}
+              entries below $100k · {percent(window.meme.sub_500k_entry_rate_percent)}{" "}
+              entries below $500k · {percent(window.meme.rug_exposure_rate_percent)} rug
+              exposure · {percent(window.meme.dead_token_exposure_rate_percent)} dead
+              Token exposure · {percent(window.meme.migration_success_rate_percent)}{" "}
               migration success ·{" "}
               {number(window.meme.token_activity_per_active_day)} Tokens per
               active day.
