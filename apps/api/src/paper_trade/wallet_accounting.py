@@ -9,9 +9,13 @@ visible in the result.
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, Optional, Protocol
+from hashlib import sha256
+import json
+from typing import Any, Literal, Optional, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from paper_trade.launch_events import _is_solana_public_key
 
@@ -229,11 +233,36 @@ class WalletAccounting(WalletAccountingModel):
     warnings: list[str]
 
 
+class RecordWalletAccountingRequest(WalletAccountingModel):
+    """Canonical recorded history and marks accepted by the durable ingestion seam."""
+
+    history: WalletHistory
+    mark_prices: list[WalletMarkPrice] = Field(default_factory=list)
+
+
+class RecordWalletAccountingResult(WalletAccountingModel):
+    """Observable idempotency outcome for one recorded accounting ingestion."""
+
+    created: bool
+    activities_recorded: int
+    mark_prices_recorded: int
+
+
 class WalletAccountingStore(Protocol):
     """HTTP persistence seam for a Wallet accounting detail lookup."""
 
     async def accounting(self, address: str, as_of: datetime) -> WalletAccounting:
         """Return the requested Wallet's deterministic point-in-time accounting."""
+
+
+@runtime_checkable
+class WalletAccountingRecordingStore(WalletAccountingStore, Protocol):
+    """Durable ingestion contract for canonical, recorded Wallet accounting facts."""
+
+    async def record(
+        self, request: RecordWalletAccountingRequest
+    ) -> RecordWalletAccountingResult:
+        """Persist a replay-safe recorded history and point-in-time mark prices."""
 
 
 @dataclass
@@ -509,3 +538,260 @@ class InMemoryWalletAccountingStore:
 
     async def accounting(self, address: str, as_of: datetime) -> WalletAccounting:
         return await self._service.accounting(address, as_of)
+
+
+class InMemoryRecordedWalletAccountingStore:
+    """Replay-safe recorded accounting store for deterministic contract tests."""
+
+    def __init__(self) -> None:
+        self._activities: dict[str, dict[str, WalletActivity]] = {}
+        self._coverages: dict[str, dict[str, WalletHistoryCoverage]] = {}
+        self._prices: dict[tuple[str, datetime, str], WalletMarkPrice] = {}
+
+    async def record(
+        self, request: RecordWalletAccountingRequest
+    ) -> RecordWalletAccountingResult:
+        address = request.history.address
+        activities = self._activities.setdefault(address, {})
+        coverages = self._coverages.setdefault(address, {})
+        activity_count = 0
+        mark_count = 0
+        for activity in request.history.activities:
+            existing = activities.get(activity.signature)
+            if existing is None:
+                activities[activity.signature] = WalletActivity.model_validate(activity.model_dump())
+                activity_count += 1
+            elif existing != activity:
+                raise ValueError("conflicting recorded Wallet activity")
+        coverage_key = _coverage_key(request.history.coverage)
+        coverage_was_new = coverage_key not in coverages
+        if coverage_was_new:
+            coverages[coverage_key] = WalletHistoryCoverage.model_validate(
+                request.history.coverage.model_dump()
+            )
+        for price in request.mark_prices:
+            key = (price.token_address, price.observed_at, price.provider)
+            existing = self._prices.get(key)
+            if existing is None:
+                self._prices[key] = WalletMarkPrice.model_validate(price.model_dump())
+                mark_count += 1
+            elif existing != price:
+                raise ValueError("conflicting recorded Wallet mark price")
+        return RecordWalletAccountingResult(
+            created=bool(activity_count or mark_count or coverage_was_new),
+            activities_recorded=activity_count,
+            mark_prices_recorded=mark_count,
+        )
+
+    async def accounting(self, address: str, as_of: datetime) -> WalletAccounting:
+        activities = self._activities.get(address)
+        if not activities:
+            raise KeyError(address)
+        coverage = _coverage_for_as_of(self._coverages.get(address, {}).values(), as_of)
+        service = WalletAccountingService(
+            history_source=RecordedWalletHistorySource(
+                pages=[list(activities.values())], coverage=coverage
+            ),
+            prices=list(self._prices.values()),
+        )
+        return await service.accounting(address, as_of)
+
+
+class PostgresWalletAccountingStore:
+    """PostgreSQL source of truth for replay-safe recorded Wallet accounting facts."""
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        self._engine = engine
+
+    async def record(
+        self, request: RecordWalletAccountingRequest
+    ) -> RecordWalletAccountingResult:
+        address = request.history.address
+        activity_count = 0
+        mark_count = 0
+        coverage_was_new = False
+        async with self._engine.begin() as connection:
+            await connection.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:address))"), {"address": address}
+            )
+            for activity in request.history.activities:
+                inserted = await connection.execute(
+                    text(
+                        """
+                        INSERT INTO wallet_accounting_activities (
+                            wallet_address, signature, chain_time, observed_at, activity
+                        ) VALUES (
+                            :wallet_address, :signature, :chain_time, :observed_at,
+                            CAST(:activity AS JSONB)
+                        )
+                        ON CONFLICT (wallet_address, signature) DO NOTHING
+                        RETURNING signature
+                        """
+                    ),
+                    {
+                        "wallet_address": address,
+                        "signature": activity.signature,
+                        "chain_time": activity.chain_time,
+                        "observed_at": activity.observed_at,
+                        "activity": _json_document(activity),
+                    },
+                )
+                if inserted.scalar_one_or_none() is not None:
+                    activity_count += 1
+                else:
+                    existing = await connection.execute(
+                        text(
+                            """
+                            SELECT activity FROM wallet_accounting_activities
+                            WHERE wallet_address = :wallet_address AND signature = :signature
+                            """
+                        ),
+                        {"wallet_address": address, "signature": activity.signature},
+                    )
+                    if WalletActivity.model_validate(_json_value(existing.scalar_one())) != activity:
+                        raise ValueError("conflicting recorded Wallet activity")
+            coverage_key = _coverage_key(request.history.coverage)
+            inserted_coverage = await connection.execute(
+                text(
+                    """
+                    INSERT INTO wallet_accounting_coverages (
+                        wallet_address, coverage_key, as_of_start, coverage
+                    ) VALUES (
+                        :wallet_address, :coverage_key, :as_of_start, CAST(:coverage AS JSONB)
+                    )
+                    ON CONFLICT (wallet_address, coverage_key) DO NOTHING
+                    RETURNING coverage_key
+                    """
+                ),
+                {
+                    "wallet_address": address,
+                    "coverage_key": coverage_key,
+                    "as_of_start": request.history.coverage.as_of_start,
+                    "coverage": _json_document(request.history.coverage),
+                },
+            )
+            coverage_was_new = inserted_coverage.scalar_one_or_none() is not None
+            for price in request.mark_prices:
+                inserted = await connection.execute(
+                    text(
+                        """
+                        INSERT INTO wallet_accounting_mark_prices (
+                            token_address, observed_at, provider, price_usd
+                        ) VALUES (:token_address, :observed_at, :provider, :price_usd)
+                        ON CONFLICT (token_address, observed_at, provider) DO NOTHING
+                        RETURNING token_address
+                        """
+                    ),
+                    {
+                        "token_address": price.token_address,
+                        "observed_at": price.observed_at,
+                        "provider": price.provider,
+                        "price_usd": price.price_usd,
+                    },
+                )
+                if inserted.scalar_one_or_none() is not None:
+                    mark_count += 1
+                else:
+                    existing = await connection.execute(
+                        text(
+                            """
+                            SELECT price_usd FROM wallet_accounting_mark_prices
+                            WHERE token_address = :token_address AND observed_at = :observed_at
+                              AND provider = :provider
+                            """
+                        ),
+                        {
+                            "token_address": price.token_address,
+                            "observed_at": price.observed_at,
+                            "provider": price.provider,
+                        },
+                    )
+                    if float(existing.scalar_one()) != price.price_usd:
+                        raise ValueError("conflicting recorded Wallet mark price")
+        return RecordWalletAccountingResult(
+            created=bool(activity_count or coverage_was_new or mark_count),
+            activities_recorded=activity_count,
+            mark_prices_recorded=mark_count,
+        )
+
+    async def accounting(self, address: str, as_of: datetime) -> WalletAccounting:
+        async with self._engine.connect() as connection:
+            activities_result = await connection.execute(
+                text(
+                    """
+                    SELECT activity FROM wallet_accounting_activities
+                    WHERE wallet_address = :wallet_address
+                      AND chain_time <= :as_of
+                    ORDER BY chain_time, observed_at, signature
+                    """
+                ),
+                {"wallet_address": address, "as_of": as_of},
+            )
+            activities = [
+                WalletActivity.model_validate(_json_value(activity))
+                for activity in activities_result.scalars()
+            ]
+            if not activities:
+                raise KeyError(address)
+            coverage_result = await connection.execute(
+                text(
+                    """
+                    SELECT coverage FROM wallet_accounting_coverages
+                    WHERE wallet_address = :wallet_address AND as_of_start <= :as_of
+                    ORDER BY as_of_start DESC, coverage_key DESC
+                    LIMIT 1
+                    """
+                ),
+                {"wallet_address": address, "as_of": as_of},
+            )
+            raw_coverage = coverage_result.scalar_one_or_none()
+            if raw_coverage is None:
+                raise KeyError(address)
+            prices_result = await connection.execute(
+                text(
+                    """
+                    SELECT token_address, observed_at, provider, price_usd
+                    FROM wallet_accounting_mark_prices
+                    WHERE observed_at <= :as_of
+                    ORDER BY token_address, observed_at, provider
+                    """
+                ),
+                {"as_of": as_of},
+            )
+            prices = [
+                WalletMarkPrice(
+                    token_address=row["token_address"],
+                    observed_at=row["observed_at"],
+                    provider=row["provider"],
+                    price_usd=float(row["price_usd"]),
+                )
+                for row in prices_result.mappings()
+            ]
+        coverage = WalletHistoryCoverage.model_validate(_json_value(raw_coverage))
+        service = WalletAccountingService(
+            history_source=RecordedWalletHistorySource(pages=[activities], coverage=coverage),
+            prices=prices,
+        )
+        return await service.accounting(address, as_of)
+
+
+def _json_document(model: WalletAccountingModel) -> str:
+    return json.dumps(model.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+
+
+def _json_value(value: Any) -> Any:
+    return json.loads(value) if isinstance(value, str) else value
+
+
+def _coverage_key(coverage: WalletHistoryCoverage) -> str:
+    return sha256(_json_document(coverage).encode()).hexdigest()
+
+
+def _coverage_for_as_of(
+    coverages: Sequence[WalletHistoryCoverage], as_of: datetime
+) -> WalletHistoryCoverage:
+    eligible = [coverage for coverage in coverages if coverage.as_of_start <= as_of]
+    if not eligible:
+        raise KeyError("No recorded Wallet coverage at the requested as-of time")
+    selected = max(eligible, key=lambda coverage: (coverage.as_of_start, coverage.as_of_end))
+    return selected.model_copy(update={"requested_as_of": as_of})

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 const walletAddress = "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1";
+const stackWalletAddress = "4wBqpZM9W7D6h2ZQ5E6o1CymCPG9hrpE7cXkYkKpE8Qm";
 const tokenAddress = "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr";
 
 const behavior = {
@@ -79,7 +80,10 @@ const behavior = {
         minimum: 8000,
         maximum: 8000,
       },
-      rug_or_dead_exposure_rate_percent: 0,
+      sub_100k_entry_rate_percent: 100,
+      sub_500k_entry_rate_percent: 100,
+      rug_exposure_rate_percent: 0,
+      dead_token_exposure_rate_percent: 0,
       migration_success_rate_percent: 100,
       token_activity_per_active_day: 1,
     },
@@ -247,6 +251,76 @@ const accounting = {
   ],
   warnings: ["Recorded fixture has no earlier history"],
 };
+
+test("running Docker stack persists recorded Wallet accounting for the detail journey", async ({
+  page,
+}) => {
+  test.skip(!process.env.STACK_E2E, "Runs against the Docker Compose workspace");
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+  const recording = {
+    history: {
+      address: stackWalletAddress,
+      activities: [
+        {
+          signature: "stack-wallet-accounting-buy-0001",
+          slot: 314159800,
+          chain_time: "2020-01-01T00:00:00Z",
+          observed_at: "2020-01-01T00:00:01Z",
+          succeeded: true,
+          fee_usd: 0,
+          movements: [
+            {
+              token_address: tokenAddress,
+              movement_type: "BUY",
+              quantity: 10,
+              notional_usd: 20,
+              venue: "Raydium",
+              evidence: ["recorded stack Wallet swap"],
+            },
+          ],
+        },
+      ],
+      coverage: {
+        provider: "HELIUS",
+        requested_as_of: "2020-01-01T00:00:01Z",
+        as_of_start: "2020-01-01T00:00:00Z",
+        as_of_end: "2020-01-01T00:00:01Z",
+        complete: true,
+        freshness_seconds: 1,
+        commitment: "confirmed",
+        unknown_fields: [],
+        warnings: [],
+      },
+    },
+    mark_prices: [
+      {
+        token_address: tokenAddress,
+        price_usd: 5,
+        observed_at: "2020-01-01T00:00:02Z",
+        provider: "DEXSCREENER",
+      },
+    ],
+  };
+  const recordingUrl = `${apiUrl}/wallets/${stackWalletAddress}/accounting/recordings`;
+  expect([200, 201]).toContain((await page.request.post(recordingUrl, { data: recording })).status());
+  expect((await page.request.post(recordingUrl, { data: recording })).status()).toBe(200);
+
+  const accountingResponse = await page.request.get(
+    `${apiUrl}/wallets/${stackWalletAddress}/accounting?as_of=2020-01-01T00:00:03Z`,
+  );
+  expect(accountingResponse.status()).toBe(200);
+  expect((await accountingResponse.json()).pnl.clean.total_usd).toBe(30);
+
+  await page.goto(`/wallets/${stackWalletAddress}`);
+
+  await expect(page.getByRole("heading", { name: "Wallet accounting" })).toBeVisible();
+  await expect(page.getByTestId("clean-pnl")).toContainText("30.00");
+  await expect(page.getByTestId("wallet-lots")).toContainText(
+    "stack-wallet-accounting-buy-0001",
+  );
+  await expect(page.getByTestId("wallet-coverage")).toContainText("HELIUS");
+});
 
 test("Wallet detail shows FIFO accounting, contamination, failed and unknown history, and coverage", async ({
   page,

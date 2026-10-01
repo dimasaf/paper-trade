@@ -50,7 +50,14 @@ from paper_trade.tokens import (
     TokenRegistrationService,
     TokenStore,
 )
-from paper_trade.wallet_accounting import WalletAccounting, WalletAccountingStore
+from paper_trade.wallet_accounting import (
+    PostgresWalletAccountingStore,
+    RecordWalletAccountingRequest,
+    RecordWalletAccountingResult,
+    WalletAccounting,
+    WalletAccountingRecordingStore,
+    WalletAccountingStore,
+)
 from paper_trade.wallet_behavior import (
     StoredMarketEvidenceSource,
     WalletBehavior,
@@ -107,9 +114,12 @@ def create_app(
         application.state.market_state_store = market_state_store or PostgresMarketStateStore(
             engine
         )
-        if wallet_behavior_store is None and wallet_accounting_store is not None:
+        application.state.wallet_accounting_store = wallet_accounting_store or (
+            PostgresWalletAccountingStore(engine)
+        )
+        if wallet_behavior_store is None:
             application.state.wallet_behavior_store = WalletBehaviorService(
-                wallet_accounting_store,
+                application.state.wallet_accounting_store,
                 StoredMarketEvidenceSource(application.state.market_state_store),
             )
         try:
@@ -241,6 +251,12 @@ def create_app(
             raise HTTPException(status_code=503, detail="Wallet accounting store is unavailable")
         return store
 
+    def wallet_recording_store() -> WalletAccountingRecordingStore:
+        store = app.state.wallet_accounting_store
+        if store is None or not isinstance(store, WalletAccountingRecordingStore):
+            raise HTTPException(status_code=503, detail="Wallet accounting ingestion is unavailable")
+        return store
+
     def wallet_behavior_store_or_unavailable() -> WalletBehaviorStore:
         store = app.state.wallet_behavior_store
         if store is None:
@@ -334,12 +350,35 @@ def create_app(
             raise HTTPException(status_code=404, detail="No historical winner cohort has been run")
         return discovery
 
+    @app.post(
+        "/wallets/{address}/accounting/recordings",
+        response_model=RecordWalletAccountingResult,
+        status_code=201,
+    )
+    async def record_wallet_accounting(
+        address: str,
+        request: RecordWalletAccountingRequest,
+        response: Response,
+    ) -> RecordWalletAccountingResult:
+        if request.history.address != address:
+            raise HTTPException(status_code=422, detail="Wallet address does not match recorded history")
+        try:
+            recorded = await wallet_recording_store().record(request)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        if not recorded.created:
+            response.status_code = 200
+        return recorded
+
     @app.get("/wallets/{address}/accounting", response_model=WalletAccounting)
     async def wallet_accounting_detail(
         address: str,
         as_of: Optional[datetime] = None,
     ) -> WalletAccounting:
-        return await wallet_store().accounting(address, as_of or datetime.now(timezone.utc))
+        try:
+            return await wallet_store().accounting(address, as_of or datetime.now(timezone.utc))
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Wallet has no recorded history") from error
 
     @app.get("/wallets/{address}/behavior", response_model=WalletBehavior)
     async def wallet_behavior_detail(
