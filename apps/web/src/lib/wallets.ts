@@ -117,6 +117,18 @@ export type WalletBehavior = {
   warnings: string[];
 };
 
+type CopyabilityFill = {
+  model: "CONSTANT_PRODUCT" | "FIXED_SLIPPAGE";
+  confidence: "HIGH" | "LOW";
+  liquidity_usd: number | null;
+  pool_address: string | null;
+  venue: string | null;
+  snapshot_at: string | null;
+  source_evidence: string[];
+  fallback_assumptions: string[];
+  venue_fee_sol: number;
+};
+
 export type WalletCopyability = {
   address: string;
   as_of: string;
@@ -133,16 +145,33 @@ export type WalletCopyability = {
     follower_roi_percent: number | null;
     copy_decay_percent: number | null;
     status: "FILLED" | "REJECTED";
-    entry_fill: {
-      model: "CONSTANT_PRODUCT" | "FIXED_SLIPPAGE";
-      confidence: "HIGH" | "LOW";
-      liquidity_usd: number | null;
-    } | null;
+    entry_fill: CopyabilityFill | null;
+    exit_fill: CopyabilityFill | null;
+    pool_selections: Array<{
+      side: "BUY" | "SELL";
+      requested_at: string;
+      pool_address: string | null;
+      venue: string | null;
+      pool_model: "CONSTANT_PRODUCT" | "DLMM" | "CONCENTRATED" | "UNKNOWN" | null;
+      snapshot_at: string | null;
+      source_evidence: string[];
+      status: "SELECTED" | "UNKNOWN" | "STALE";
+      warning: string | null;
+    }>;
+    coverage: {
+      token_address: string;
+      entry_requested_at: string;
+      exit_requested_at: string;
+      complete: boolean;
+      unknown_fields: string[];
+      warnings: string[];
+    };
     warnings: string[];
   }>;
   coverage: {
     provider: string;
     complete: boolean;
+    freshness_seconds: number;
     unknown_fields: string[];
     warnings: string[];
   };

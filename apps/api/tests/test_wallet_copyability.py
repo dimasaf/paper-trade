@@ -61,13 +61,10 @@ def pool_source(
     pools = [RecordedMarketPool.model_validate(item) for item in document["pools"]]
     if not reserves:
         pools = [
-            pool.model_copy(update={"sol_reserve": None, "token_reserve": None})
-            for pool in pools
+            pool.model_copy(update={"sol_reserve": None, "token_reserve": None}) for pool in pools
         ]
     elif illiquid:
-        pools = [
-            pool.model_copy(update={"sol_reserve": 1, "token_reserve": 50}) for pool in pools
-        ]
+        pools = [pool.model_copy(update={"sol_reserve": 1, "token_reserve": 50}) for pool in pools]
     return RecordedCopyabilityMarketPoolSource(
         pools, CopyabilityPoolCoverage.model_validate(document["coverage"])
     )
@@ -133,8 +130,103 @@ async def test_recorded_copyability_marks_missing_reserves_as_low_confidence_fal
     assert outcome.entry_fill.model == "FIXED_SLIPPAGE"
     assert outcome.entry_fill.confidence == "LOW"
     assert outcome.entry_fill.slippage_percent == 2
+    assert outcome.entry_fill.venue_fee_sol > 0
+    assert outcome.entry_fill.source_evidence
+    assert outcome.entry_fill.fallback_assumptions
     assert "fixed-slippage fallback" in outcome.warnings[0]
     assert "Recorded market-pool coverage is incomplete." in result.warnings
+
+
+@pytest.mark.asyncio
+async def test_copyability_rejects_stale_snapshots_and_reports_scenario_unknowns() -> None:
+    document = json.loads((FIXTURES / "recorded_copyability_market_pools.json").read_text())
+    coverage = CopyabilityPoolCoverage.model_validate(document["coverage"]).model_copy(
+        update={"freshness_seconds": 0}
+    )
+    source = RecordedCopyabilityMarketPoolSource(
+        [RecordedMarketPool.model_validate(item) for item in document["pools"]], coverage
+    )
+
+    result = await WalletCopyabilityService(accounting_store(), source).copyability(
+        WALLET, at("2026-09-28T10:00:00Z")
+    )
+
+    outcome = next(
+        item
+        for item in result.outcomes
+        if item.follower_delay_ms == 500 and item.follower_size_sol == 0.1
+    )
+    assert outcome.status == "REJECTED"
+    assert "exit_pool_snapshot_stale" in outcome.coverage.unknown_fields
+    assert outcome.pool_selections[1].status == "STALE"
+
+
+@pytest.mark.asyncio
+async def test_copyability_rejects_pools_that_do_not_match_the_leader_venue() -> None:
+    document = json.loads((FIXTURES / "recorded_copyability_market_pools.json").read_text())
+    source = RecordedCopyabilityMarketPoolSource(
+        [
+            RecordedMarketPool.model_validate(item).model_copy(update={"venue": "Meteora"})
+            for item in document["pools"]
+        ],
+        CopyabilityPoolCoverage.model_validate(document["coverage"]),
+    )
+
+    result = await WalletCopyabilityService(accounting_store(), source).copyability(
+        WALLET, at("2026-09-28T10:00:00Z")
+    )
+
+    assert all(outcome.status == "REJECTED" for outcome in result.outcomes)
+    assert "No Raydium pool snapshot" in result.outcomes[0].pool_selections[0].warning
+
+
+@pytest.mark.asyncio
+async def test_copyability_requires_liquidity_for_fallback_and_limits_exit_participation() -> None:
+    document = json.loads((FIXTURES / "recorded_copyability_market_pools.json").read_text())
+    pools = [RecordedMarketPool.model_validate(item) for item in document["pools"]]
+    unsupported_fallback = [
+        pool.model_copy(update={"pool_model": "DLMM", "sol_reserve": None, "token_reserve": None})
+        for pool in pools
+    ]
+    fallback = await WalletCopyabilityService(
+        accounting_store(),
+        RecordedCopyabilityMarketPoolSource(
+            unsupported_fallback, CopyabilityPoolCoverage.model_validate(document["coverage"])
+        ),
+    ).copyability(WALLET, at("2026-09-28T10:00:00Z"))
+    assert fallback.outcomes[0].entry_fill is not None
+    assert fallback.outcomes[0].entry_fill.model == "FIXED_SLIPPAGE"
+    assert "Unsupported pool model DLMM" in fallback.outcomes[0].warnings[0]
+
+    rejected = await WalletCopyabilityService(
+        accounting_store(),
+        RecordedCopyabilityMarketPoolSource(
+            [pool.model_copy(update={"liquidity_usd": None}) for pool in unsupported_fallback],
+            CopyabilityPoolCoverage.model_validate(document["coverage"]),
+        ),
+    ).copyability(WALLET, at("2026-09-28T10:00:00Z"))
+    assert all(outcome.status == "REJECTED" for outcome in rejected.outcomes)
+    assert "fallback sizing is unsupported" in rejected.outcomes[0].warnings[0]
+
+    exit_limited = [
+        pool.model_copy(update={"token_reserve": 100})
+        if pool.observed_at >= at("2026-09-28T09:20:00Z")
+        else pool
+        for pool in pools
+    ]
+    result = await WalletCopyabilityService(
+        accounting_store(),
+        RecordedCopyabilityMarketPoolSource(
+            exit_limited, CopyabilityPoolCoverage.model_validate(document["coverage"])
+        ),
+    ).copyability(WALLET, at("2026-09-28T10:00:00Z"))
+    outcome = next(
+        item
+        for item in result.outcomes
+        if item.follower_delay_ms == 500 and item.follower_size_sol == 0.1
+    )
+    assert outcome.status == "REJECTED"
+    assert "exit exceeds" in outcome.warnings[0]
 
 
 def test_wallet_copyability_endpoint_exposes_recorded_outcomes_and_coverage() -> None:
@@ -151,6 +243,8 @@ def test_wallet_copyability_endpoint_exposes_recorded_outcomes_and_coverage() ->
     assert document["delays_ms"] == [500, 1000, 2000, 3000, 5000, 10000]
     assert document["follower_sizes_sol"] == [0.1, 0.25, 0.5, 1.0, 2.0]
     assert document["outcomes"][0]["entry_fill"]["model"] == "CONSTANT_PRODUCT"
+    assert document["outcomes"][0]["pool_selections"][0]["venue"] == "Raydium"
+    assert document["outcomes"][0]["coverage"]["token_address"] == TOKEN
     assert document["coverage"]["provider"] == "RECORDED_MARKET_POOL"
 
 

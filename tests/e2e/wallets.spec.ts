@@ -143,6 +143,44 @@ const copyability = {
         model: "CONSTANT_PRODUCT",
         confidence: "LOW",
         liquidity_usd: 200000,
+        pool_address: "pool-1",
+        venue: "Raydium",
+        snapshot_at: "2026-09-28T09:05:00.500000Z",
+        source_evidence: ["Recorded pool"],
+        fallback_assumptions: [],
+        venue_fee_sol: 0.00025,
+      },
+      exit_fill: {
+        model: "CONSTANT_PRODUCT",
+        confidence: "LOW",
+        liquidity_usd: 200000,
+        pool_address: "pool-1",
+        venue: "Raydium",
+        snapshot_at: "2026-09-28T09:20:00.500000Z",
+        source_evidence: ["Recorded pool"],
+        fallback_assumptions: [],
+        venue_fee_sol: 0.00025,
+      },
+      pool_selections: [
+        {
+          side: "BUY",
+          requested_at: "2026-09-28T09:05:00.500000Z",
+          pool_address: "pool-1",
+          venue: "Raydium",
+          pool_model: "CONSTANT_PRODUCT",
+          snapshot_at: "2026-09-28T09:05:00.500000Z",
+          source_evidence: ["Recorded pool"],
+          status: "SELECTED",
+          warning: null,
+        },
+      ],
+      coverage: {
+        token_address: tokenAddress,
+        entry_requested_at: "2026-09-28T09:05:00.500000Z",
+        exit_requested_at: "2026-09-28T09:20:00.500000Z",
+        complete: false,
+        unknown_fields: [],
+        warnings: [],
       },
       warnings: ["Recorded market-pool coverage is incomplete."],
     },
@@ -150,10 +188,26 @@ const copyability = {
   coverage: {
     provider: "RECORDED_MARKET_POOL",
     complete: false,
+    freshness_seconds: 10,
     unknown_fields: ["historical_pool_state"],
     warnings: ["Recorded market-pool coverage is incomplete."],
   },
   warnings: ["Recorded market-pool coverage is incomplete."],
+};
+
+const allRejectedCopyability = {
+  ...copyability,
+  outcomes: [
+    {
+      ...copyability.outcomes[0],
+      follower_roi_percent: null,
+      copy_decay_percent: null,
+      status: "REJECTED" as const,
+      entry_fill: null,
+      exit_fill: null,
+      pool_selections: [],
+    },
+  ],
 };
 
 const accounting = {
@@ -401,6 +455,22 @@ test("running Docker stack persists recorded Wallet accounting for the detail jo
     "stack-wallet-accounting-buy-0001",
   );
   await expect(page.getByTestId("wallet-coverage")).toContainText("HELIUS");
+});
+
+test("Wallet detail retains leader ROI when every follower outcome is rejected", async ({
+  page,
+}) => {
+  await page.route("**/wallets/**/accounting*", async (route) => {
+    await route.fulfill({ json: accounting });
+  });
+  await page.route("**/wallets/**/copyability*", async (route) => {
+    await route.fulfill({ json: allRejectedCopyability });
+  });
+
+  await page.goto(`/wallets/${walletAddress}`);
+
+  await expect(page.getByTestId("wallet-copyability")).toContainText("38.10%");
+  await expect(page.getByTestId("wallet-copyability")).toContainText("UNKNOWN");
 });
 
 test("Wallet detail shows FIFO accounting, contamination, failed and unknown history, and coverage", async ({

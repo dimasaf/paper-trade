@@ -5,8 +5,13 @@
     "as_of_start": "2026-09-28T09:05:00Z",
     "as_of_end": "2026-09-28T09:20:12Z",
     "complete": false,
-    "unknown_fields": ["historical_pool_state_before_recorded_observation"],
-    "warnings": ["Recorded pool snapshots cover the Wallet's observed closes only."]
+    "unknown_fields": [
+      "historical_pool_state_before_recorded_observation"
+    ],
+    "warnings": [
+      "Recorded pool snapshots cover the Wallet's observed closes only."
+    ],
+    "freshness_seconds": 10
   },
   "pools": [
     {
@@ -19,7 +24,10 @@
       "liquidity_usd": 200000,
       "sol_reserve": 1000,
       "token_reserve": 50000,
-      "evidence": ["recorded Raydium constant-product reserves"]
+      "evidence": [
+        "recorded Raydium constant-product reserves"
+      ],
+      "pool_model": "CONSTANT_PRODUCT"
     },
     {
       "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
@@ -31,7 +39,10 @@
       "liquidity_usd": 190000,
       "sol_reserve": 1100,
       "token_reserve": 45833.333333,
-      "evidence": ["recorded Raydium price after one second"]
+      "evidence": [
+        "recorded Raydium price after one second"
+      ],
+      "pool_model": "CONSTANT_PRODUCT"
     },
     {
       "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
@@ -43,7 +54,10 @@
       "liquidity_usd": 150000,
       "sol_reserve": 1400,
       "token_reserve": 35000,
-      "evidence": ["recorded Raydium price after ten seconds"]
+      "evidence": [
+        "recorded Raydium price after ten seconds"
+      ],
+      "pool_model": "CONSTANT_PRODUCT"
     },
     {
       "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
@@ -55,7 +69,10 @@
       "liquidity_usd": 140000,
       "sol_reserve": 1500,
       "token_reserve": 33333.333333,
-      "evidence": ["recorded Raydium price after second entry"]
+      "evidence": [
+        "recorded Raydium price after second entry"
+      ],
+      "pool_model": "CONSTANT_PRODUCT"
     },
     {
       "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
@@ -67,7 +84,10 @@
       "liquidity_usd": 180000,
       "sol_reserve": 1800,
       "token_reserve": 30000,
-      "evidence": ["recorded Raydium exit reserves"]
+      "evidence": [
+        "recorded Raydium exit reserves"
+      ],
+      "pool_model": "CONSTANT_PRODUCT"
     },
     {
       "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
@@ -79,7 +99,10 @@
       "liquidity_usd": 175000,
       "sol_reserve": 1750,
       "token_reserve": 30172.413793,
-      "evidence": ["recorded Raydium exit price after delayed follower execution"]
+      "evidence": [
+        "recorded Raydium exit price after delayed follower execution"
+      ],
+      "pool_model": "CONSTANT_PRODUCT"
     }
   ]
 }

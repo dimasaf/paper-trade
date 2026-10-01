@@ -60,6 +60,7 @@ class MarketPool(MarketStateModel):
 
     address: str
     venue: str = Field(min_length=1)
+    pool_model: Literal["CONSTANT_PRODUCT", "DLMM", "CONCENTRATED", "UNKNOWN"] = "UNKNOWN"
     sol_usd_price: Optional[float] = Field(default=None, gt=0)
     sol_reserve: Optional[float] = Field(default=None, gt=0)
     token_reserve: Optional[float] = Field(default=None, gt=0)

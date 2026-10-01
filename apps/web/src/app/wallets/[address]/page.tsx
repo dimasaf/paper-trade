@@ -499,7 +499,8 @@ function CopyabilitySummary({
       return {
         delay,
         size,
-        leader: average(filled.map((outcome) => outcome.leader_roi_percent)),
+        outcomes,
+        leader: average(outcomes.map((outcome) => outcome.leader_roi_percent)),
         follower: average(
           filled.map((outcome) => outcome.follower_roi_percent as number),
         ),
@@ -567,9 +568,37 @@ function CopyabilitySummary({
                 <td className="p-3">{percent(scenario.follower)}</td>
                 <td className="p-3">{percent(scenario.decay)}</td>
                 <td className="p-3 text-xs text-slate-400">
-                  {scenario.models || "No fill"} ·{" "}
-                  {scenario.confidence || "UNKNOWN"}
+                  {scenario.models || "No fill"} · {scenario.confidence || "UNKNOWN"}
                   {scenario.rejected ? ` · ${scenario.rejected} rejected` : ""}
+                  <details className="mt-2 text-slate-300">
+                    <summary>Pool evidence</summary>
+                    {scenario.outcomes.map((outcome) => (
+                      <div
+                        key={`${outcome.leader_entry_signature}-${outcome.leader_exit_signature}`}
+                        className="mt-2"
+                      >
+                        {outcome.pool_selections.map((selection) => (
+                          <p key={selection.side}>
+                            {selection.side} · {selection.venue ?? "UNKNOWN"} ·{" "}
+                            {selection.pool_address ?? "no pool"} ·{" "}
+                            {selection.snapshot_at
+                              ? timestamp(selection.snapshot_at)
+                              : selection.status}
+                            {selection.source_evidence.length
+                              ? ` · ${selection.source_evidence.join(" ")}`
+                              : ""}
+                            {selection.warning ? ` · ${selection.warning}` : ""}
+                          </p>
+                        ))}
+                        {[outcome.entry_fill, outcome.exit_fill]
+                          .filter((fill): fill is NonNullable<typeof fill> => fill !== null)
+                          .flatMap((fill) => fill.fallback_assumptions)
+                          .map((assumption) => (
+                            <p key={assumption}>Assumption: {assumption}</p>
+                          ))}
+                      </div>
+                    ))}
+                  </details>
                 </td>
               </tr>
             ))}
