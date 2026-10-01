@@ -1,0 +1,85 @@
+{
+  "coverage": {
+    "provider": "RECORDED_MARKET_POOL",
+    "requested_as_of": "2026-09-28T10:00:00Z",
+    "as_of_start": "2026-09-28T09:05:00Z",
+    "as_of_end": "2026-09-28T09:20:12Z",
+    "complete": false,
+    "unknown_fields": ["historical_pool_state_before_recorded_observation"],
+    "warnings": ["Recorded pool snapshots cover the Wallet's observed closes only."]
+  },
+  "pools": [
+    {
+      "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+      "pool_address": "4wBqpZM9W7D6h2ZQ5E6o1CymCPG9hrpE7cXkYkKpE8Qm",
+      "venue": "Raydium",
+      "observed_at": "2026-09-28T09:05:00.500000Z",
+      "price_usd": 2,
+      "sol_usd_price": 100,
+      "liquidity_usd": 200000,
+      "sol_reserve": 1000,
+      "token_reserve": 50000,
+      "evidence": ["recorded Raydium constant-product reserves"]
+    },
+    {
+      "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+      "pool_address": "4wBqpZM9W7D6h2ZQ5E6o1CymCPG9hrpE7cXkYkKpE8Qm",
+      "venue": "Raydium",
+      "observed_at": "2026-09-28T09:05:01Z",
+      "price_usd": 2.4,
+      "sol_usd_price": 100,
+      "liquidity_usd": 190000,
+      "sol_reserve": 1100,
+      "token_reserve": 45833.333333,
+      "evidence": ["recorded Raydium price after one second"]
+    },
+    {
+      "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+      "pool_address": "4wBqpZM9W7D6h2ZQ5E6o1CymCPG9hrpE7cXkYkKpE8Qm",
+      "venue": "Raydium",
+      "observed_at": "2026-09-28T09:05:10Z",
+      "price_usd": 4,
+      "sol_usd_price": 100,
+      "liquidity_usd": 150000,
+      "sol_reserve": 1400,
+      "token_reserve": 35000,
+      "evidence": ["recorded Raydium price after ten seconds"]
+    },
+    {
+      "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+      "pool_address": "4wBqpZM9W7D6h2ZQ5E6o1CymCPG9hrpE7cXkYkKpE8Qm",
+      "venue": "Raydium",
+      "observed_at": "2026-09-28T09:10:10Z",
+      "price_usd": 4.5,
+      "sol_usd_price": 100,
+      "liquidity_usd": 140000,
+      "sol_reserve": 1500,
+      "token_reserve": 33333.333333,
+      "evidence": ["recorded Raydium price after second entry"]
+    },
+    {
+      "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+      "pool_address": "4wBqpZM9W7D6h2ZQ5E6o1CymCPG9hrpE7cXkYkKpE8Qm",
+      "venue": "Raydium",
+      "observed_at": "2026-09-28T09:20:10Z",
+      "price_usd": 6,
+      "sol_usd_price": 100,
+      "liquidity_usd": 180000,
+      "sol_reserve": 1800,
+      "token_reserve": 30000,
+      "evidence": ["recorded Raydium exit reserves"]
+    },
+    {
+      "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+      "pool_address": "4wBqpZM9W7D6h2ZQ5E6o1CymCPG9hrpE7cXkYkKpE8Qm",
+      "venue": "Raydium",
+      "observed_at": "2026-09-28T09:20:12Z",
+      "price_usd": 5.8,
+      "sol_usd_price": 100,
+      "liquidity_usd": 175000,
+      "sol_reserve": 1750,
+      "token_reserve": 30172.413793,
+      "evidence": ["recorded Raydium exit price after delayed follower execution"]
+    }
+  ]
+}

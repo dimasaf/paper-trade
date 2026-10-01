@@ -8,6 +8,7 @@ import {
   apiUrl,
   type WalletAccounting,
   type WalletBehavior,
+  type WalletCopyability,
 } from "@/lib/wallets";
 
 function amount(value: number | null): string {
@@ -23,6 +24,9 @@ export default function WalletDetailPage() {
   const address = params?.address ?? "";
   const [accounting, setAccounting] = useState<WalletAccounting | null>(null);
   const [behavior, setBehavior] = useState<WalletBehavior | null>(null);
+  const [copyability, setCopyability] = useState<WalletCopyability | null>(
+    null,
+  );
   const [asOf] = useState(() => new Date().toISOString());
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +71,26 @@ export default function WalletDetailPage() {
       }
     }
     void loadBehavior();
+    return () => controller.abort();
+  }, [address, asOf]);
+
+  useEffect(() => {
+    if (!address) return;
+    const controller = new AbortController();
+    async function loadCopyability() {
+      try {
+        const response = await fetch(
+          `${apiUrl}/wallets/${encodeURIComponent(address)}/copyability?as_of=${encodeURIComponent(asOf)}`,
+          { cache: "no-store", signal: controller.signal },
+        );
+        if (response.ok)
+          setCopyability((await response.json()) as WalletCopyability);
+      } catch (reason) {
+        if (!(reason instanceof DOMException && reason.name === "AbortError"))
+          setCopyability(null);
+      }
+    }
+    void loadCopyability();
     return () => controller.abort();
   }, [address, asOf]);
 
@@ -118,6 +142,9 @@ export default function WalletDetailPage() {
           ) : null}
 
           {behavior ? <BehaviorSummary behavior={behavior} /> : null}
+          {copyability ? (
+            <CopyabilitySummary copyability={copyability} />
+          ) : null}
 
           <section className="grid gap-4 md:grid-cols-2">
             <PnlCard
@@ -368,13 +395,14 @@ function BehaviorSummary({ behavior }: { behavior: WalletBehavior }) {
               {amount(window.meme.entry_market_cap_usd.average)} entry market
               cap · {amount(window.meme.entry_liquidity_usd.average)} entry
               liquidity · {percent(window.meme.sub_100k_entry_rate_percent)}{" "}
-              entries below $100k · {percent(window.meme.sub_500k_entry_rate_percent)}{" "}
-              entries below $500k · {percent(window.meme.rug_exposure_rate_percent)} rug
-              exposure · {percent(window.meme.dead_token_exposure_rate_percent)} dead
-              Token exposure · {percent(window.meme.migration_success_rate_percent)}{" "}
-              migration success ·{" "}
-              {number(window.meme.token_activity_per_active_day)} Tokens per
-              active day.
+              entries below $100k ·{" "}
+              {percent(window.meme.sub_500k_entry_rate_percent)} entries below
+              $500k · {percent(window.meme.rug_exposure_rate_percent)} rug
+              exposure · {percent(window.meme.dead_token_exposure_rate_percent)}{" "}
+              dead Token exposure ·{" "}
+              {percent(window.meme.migration_success_rate_percent)} migration
+              success · {number(window.meme.token_activity_per_active_day)}{" "}
+              Tokens per active day.
             </p>
             {window.unknowns.length > 0 ? (
               <ul className="mt-3 list-disc pl-5 text-xs text-amber-200">
@@ -442,6 +470,111 @@ function BehaviorSummary({ behavior }: { behavior: WalletBehavior }) {
             </ul>
           )}
         </section>
+      </div>
+    </section>
+  );
+}
+
+function CopyabilitySummary({
+  copyability,
+}: {
+  copyability: WalletCopyability;
+}) {
+  const scenarios = copyability.delays_ms.flatMap((delay) =>
+    copyability.follower_sizes_sol.map((size) => {
+      const outcomes = copyability.outcomes.filter(
+        (outcome) =>
+          outcome.follower_delay_ms === delay &&
+          outcome.follower_size_sol === size,
+      );
+      const filled = outcomes.filter(
+        (outcome) =>
+          outcome.follower_roi_percent !== null &&
+          outcome.copy_decay_percent !== null,
+      );
+      const average = (values: number[]) =>
+        values.length === 0
+          ? null
+          : values.reduce((total, value) => total + value, 0) / values.length;
+      return {
+        delay,
+        size,
+        leader: average(filled.map((outcome) => outcome.leader_roi_percent)),
+        follower: average(
+          filled.map((outcome) => outcome.follower_roi_percent as number),
+        ),
+        decay: average(
+          filled.map((outcome) => outcome.copy_decay_percent as number),
+        ),
+        rejected: outcomes.length - filled.length,
+        models: [...new Set(filled.map((outcome) => outcome.entry_fill?.model))]
+          .filter(Boolean)
+          .join(", "),
+        confidence: [
+          ...new Set(filled.map((outcome) => outcome.entry_fill?.confidence)),
+        ]
+          .filter(Boolean)
+          .join(", "),
+      };
+    }),
+  );
+  return (
+    <section className="mb-8" data-testid="wallet-copyability">
+      <header>
+        <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-300">
+          Copyability and Copy Decay
+        </p>
+        <h2 className="mt-2 text-2xl font-semibold">Follower outcomes</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Each follower entry and exit uses the recorded pool state after its
+          configured delay.
+        </p>
+      </header>
+      {copyability.warnings.length > 0 ? (
+        <div
+          role="alert"
+          className="mt-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100"
+        >
+          <strong>Copyability coverage warnings</strong>
+          <ul className="mt-2 list-disc pl-5">
+            {copyability.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-800">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-950/60 text-slate-400">
+            <tr>
+              <th className="p-3">Delay</th>
+              <th className="p-3">Follower size</th>
+              <th className="p-3">Leader ROI</th>
+              <th className="p-3">Follower ROI</th>
+              <th className="p-3">Copy Decay</th>
+              <th className="p-3">Fill evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {scenarios.map((scenario) => (
+              <tr
+                key={`${scenario.delay}-${scenario.size}`}
+                className="border-t border-slate-800"
+              >
+                <td className="p-3">{scenario.delay} ms</td>
+                <td className="p-3">{scenario.size} SOL</td>
+                <td className="p-3">{percent(scenario.leader)}</td>
+                <td className="p-3">{percent(scenario.follower)}</td>
+                <td className="p-3">{percent(scenario.decay)}</td>
+                <td className="p-3 text-xs text-slate-400">
+                  {scenario.models || "No fill"} ·{" "}
+                  {scenario.confidence || "UNKNOWN"}
+                  {scenario.rejected ? ` · ${scenario.rejected} rejected` : ""}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   );

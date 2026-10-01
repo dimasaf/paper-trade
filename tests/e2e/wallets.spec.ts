@@ -122,6 +122,40 @@ const behavior = {
   warnings: ["Historical liquidity remains UNKNOWN."],
 };
 
+const copyability = {
+  address: walletAddress,
+  as_of: "2026-09-28T10:00:00Z",
+  configuration_version: 1,
+  delays_ms: [500, 1000, 2000, 3000, 5000, 10000],
+  follower_sizes_sol: [0.1, 0.25, 0.5, 1, 2],
+  outcomes: [
+    {
+      token_address: tokenAddress,
+      leader_entry_signature: "recorded-wallet-buy-0001",
+      leader_exit_signature: "recorded-wallet-sell-0001",
+      follower_delay_ms: 500,
+      follower_size_sol: 0.1,
+      leader_roi_percent: 38.1,
+      follower_roi_percent: 20.5,
+      copy_decay_percent: 17.6,
+      status: "FILLED",
+      entry_fill: {
+        model: "CONSTANT_PRODUCT",
+        confidence: "LOW",
+        liquidity_usd: 200000,
+      },
+      warnings: ["Recorded market-pool coverage is incomplete."],
+    },
+  ],
+  coverage: {
+    provider: "RECORDED_MARKET_POOL",
+    complete: false,
+    unknown_fields: ["historical_pool_state"],
+    warnings: ["Recorded market-pool coverage is incomplete."],
+  },
+  warnings: ["Recorded market-pool coverage is incomplete."],
+};
+
 const accounting = {
   address: walletAddress,
   as_of: "2026-09-28T10:00:00Z",
@@ -255,7 +289,10 @@ const accounting = {
 test("running Docker stack persists recorded Wallet accounting for the detail journey", async ({
   page,
 }) => {
-  test.skip(!process.env.STACK_E2E, "Runs against the Docker Compose workspace");
+  test.skip(
+    !process.env.STACK_E2E,
+    "Runs against the Docker Compose workspace",
+  );
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
   const recording = {
@@ -321,8 +358,12 @@ test("running Docker stack persists recorded Wallet accounting for the detail jo
     ],
   };
   const recordingUrl = `${apiUrl}/wallets/${stackWalletAddress}/accounting/recordings`;
-  expect([200, 201]).toContain((await page.request.post(recordingUrl, { data: recording })).status());
-  expect((await page.request.post(recordingUrl, { data: recording })).status()).toBe(200);
+  expect([200, 201]).toContain(
+    (await page.request.post(recordingUrl, { data: recording })).status(),
+  );
+  expect(
+    (await page.request.post(recordingUrl, { data: recording })).status(),
+  ).toBe(200);
 
   const accountingResponse = await page.request.get(
     `${apiUrl}/wallets/${stackWalletAddress}/accounting?as_of=2020-01-01T00:00:03Z`,
@@ -348,9 +389,13 @@ test("running Docker stack persists recorded Wallet accounting for the detail jo
 
   await page.goto(`/wallets/${stackWalletAddress}`);
 
-  await expect(page.getByRole("heading", { name: "Wallet accounting" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Wallet accounting" }),
+  ).toBeVisible();
   await expect(page.getByTestId("wallet-behavior")).toBeVisible();
-  await expect(page.getByTestId("behavior-windows")).toContainText("ALL_TIME window");
+  await expect(page.getByTestId("behavior-windows")).toContainText(
+    "ALL_TIME window",
+  );
   await expect(page.getByTestId("clean-pnl")).toContainText("30.00");
   await expect(page.getByTestId("wallet-lots")).toContainText(
     "stack-wallet-accounting-buy-0001",
@@ -366,6 +411,9 @@ test("Wallet detail shows FIFO accounting, contamination, failed and unknown his
   });
   await page.route("**/wallets/**/behavior*", async (route) => {
     await route.fulfill({ json: behavior });
+  });
+  await page.route("**/wallets/**/copyability*", async (route) => {
+    await route.fulfill({ json: copyability });
   });
 
   await page.goto(`/wallets/${walletAddress}`);
@@ -404,5 +452,12 @@ test("Wallet detail shows FIFO accounting, contamination, failed and unknown his
   );
   await expect(page.getByTestId("behavior-risk-flags")).toContainText(
     "does not identify intent",
+  );
+  await expect(page.getByTestId("wallet-copyability")).toContainText(
+    "Follower outcomes",
+  );
+  await expect(page.getByTestId("wallet-copyability")).toContainText("500 ms");
+  await expect(page.getByTestId("wallet-copyability")).toContainText(
+    "CONSTANT_PRODUCT",
   );
 });

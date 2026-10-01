@@ -64,6 +64,12 @@ from paper_trade.wallet_behavior import (
     WalletBehaviorService,
     WalletBehaviorStore,
 )
+from paper_trade.wallet_copyability import (
+    StoredCopyabilityMarketPoolSource,
+    WalletCopyability,
+    WalletCopyabilityService,
+    WalletCopyabilityStore,
+)
 
 http_logger = logging.getLogger("paper_trade.http")
 
@@ -83,6 +89,7 @@ def create_app(
     market_state_store: Optional[MarketStateStore] = None,
     wallet_accounting_store: Optional[WalletAccountingStore] = None,
     wallet_behavior_store: Optional[WalletBehaviorStore] = None,
+    wallet_copyability_store: Optional[WalletCopyabilityStore] = None,
     early_buyer_source: Optional[EarlyBuyerSource] = None,
     historical_winner_discovery_store: Optional[HistoricalWinnerDiscoveryStore] = None,
 ) -> FastAPI:
@@ -122,6 +129,13 @@ def create_app(
                 application.state.wallet_accounting_store,
                 StoredMarketEvidenceSource(application.state.market_state_store),
             )
+        application.state.wallet_copyability_store = wallet_copyability_store or (
+            WalletCopyabilityService(
+                application.state.wallet_accounting_store,
+                StoredCopyabilityMarketPoolSource(application.state.market_state_store),
+                application.state.research_configuration_store,
+            )
+        )
         try:
             yield
         finally:
@@ -135,15 +149,19 @@ def create_app(
     app.state.market_state_store = market_state_store
     app.state.wallet_accounting_store = wallet_accounting_store
     app.state.wallet_behavior_store = wallet_behavior_store
-    if (
-        wallet_behavior_store is None
-        and wallet_accounting_store is not None
-        and market_state_store is not None
-    ):
-        app.state.wallet_behavior_store = WalletBehaviorService(
-            wallet_accounting_store,
-            StoredMarketEvidenceSource(market_state_store),
-        )
+    app.state.wallet_copyability_store = wallet_copyability_store
+    if wallet_accounting_store is not None and market_state_store is not None:
+        if wallet_behavior_store is None:
+            app.state.wallet_behavior_store = WalletBehaviorService(
+                wallet_accounting_store,
+                StoredMarketEvidenceSource(market_state_store),
+            )
+        if wallet_copyability_store is None and research_configuration_store is not None:
+            app.state.wallet_copyability_store = WalletCopyabilityService(
+                wallet_accounting_store,
+                StoredCopyabilityMarketPoolSource(market_state_store),
+                research_configuration_store,
+            )
     app.state.early_buyer_source = early_buyer_source
     app.state.historical_winner_discovery_store = historical_winner_discovery_store
     app.add_middleware(
@@ -261,6 +279,12 @@ def create_app(
         store = app.state.wallet_behavior_store
         if store is None:
             raise HTTPException(status_code=503, detail="Wallet behavior store is unavailable")
+        return store
+
+    def wallet_copyability_store_or_unavailable() -> WalletCopyabilityStore:
+        store = app.state.wallet_copyability_store
+        if store is None:
+            raise HTTPException(status_code=503, detail="Wallet copyability store is unavailable")
         return store
 
     def historical_winner_service() -> HistoricalWinnerDiscoveryService:
@@ -388,6 +412,18 @@ def create_app(
         return await wallet_behavior_store_or_unavailable().behavior(
             address, as_of or datetime.now(timezone.utc)
         )
+
+    @app.get("/wallets/{address}/copyability", response_model=WalletCopyability)
+    async def wallet_copyability_detail(
+        address: str,
+        as_of: Optional[datetime] = None,
+    ) -> WalletCopyability:
+        try:
+            return await wallet_copyability_store_or_unavailable().copyability(
+                address, as_of or datetime.now(timezone.utc)
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Wallet has no recorded history") from error
 
     @app.get("/health", response_model=HealthResponse)
     async def health(request: Request) -> HealthResponse:

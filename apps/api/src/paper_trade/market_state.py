@@ -60,6 +60,15 @@ class MarketPool(MarketStateModel):
 
     address: str
     venue: str = Field(min_length=1)
+    sol_usd_price: Optional[float] = Field(default=None, gt=0)
+    sol_reserve: Optional[float] = Field(default=None, gt=0)
+    token_reserve: Optional[float] = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_reserves(self) -> "MarketPool":
+        if (self.sol_reserve is None) != (self.token_reserve is None):
+            raise ValueError("sol_reserve and token_reserve must be supplied together")
+        return self
 
     @model_validator(mode="after")
     def validate_address(self) -> "MarketPool":

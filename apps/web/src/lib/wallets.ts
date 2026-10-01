@@ -117,6 +117,38 @@ export type WalletBehavior = {
   warnings: string[];
 };
 
+export type WalletCopyability = {
+  address: string;
+  as_of: string;
+  configuration_version: number | null;
+  delays_ms: number[];
+  follower_sizes_sol: number[];
+  outcomes: Array<{
+    token_address: string;
+    leader_entry_signature: string;
+    leader_exit_signature: string;
+    follower_delay_ms: number;
+    follower_size_sol: number;
+    leader_roi_percent: number;
+    follower_roi_percent: number | null;
+    copy_decay_percent: number | null;
+    status: "FILLED" | "REJECTED";
+    entry_fill: {
+      model: "CONSTANT_PRODUCT" | "FIXED_SLIPPAGE";
+      confidence: "HIGH" | "LOW";
+      liquidity_usd: number | null;
+    } | null;
+    warnings: string[];
+  }>;
+  coverage: {
+    provider: string;
+    complete: boolean;
+    unknown_fields: string[];
+    warnings: string[];
+  };
+  warnings: string[];
+};
+
 export type WalletAccounting = {
   address: string;
   as_of: string;
