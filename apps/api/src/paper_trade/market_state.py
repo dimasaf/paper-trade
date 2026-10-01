@@ -258,8 +258,10 @@ class PostgresMarketStateStore:
             result = await connection.execute(
                 text(
                     """
-                    SELECT observation_id, observed_at, price_usd, supply, market_cap_usd,
-                           liquidity_usd, volume_24h_usd, pools, coverage
+                    SELECT observation.observation_id, observation.observed_at,
+                           observation.price_usd, observation.supply,
+                           observation.market_cap_usd, observation.liquidity_usd,
+                           observation.volume_24h_usd, observation.pools, observation.coverage
                     FROM token_market_observations observation
                     JOIN tokens token ON token.id = observation.token_id
                     WHERE token.address = :address AND observation.observed_at <= :as_of

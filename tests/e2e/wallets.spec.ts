@@ -336,9 +336,21 @@ test("running Docker stack persists recorded Wallet accounting for the detail jo
     }),
   );
 
+  const behaviorResponse = await page.request.get(
+    `${apiUrl}/wallets/${stackWalletAddress}/behavior?as_of=2020-01-01T00:00:03Z`,
+  );
+  expect(behaviorResponse.status()).toBe(200);
+  const behaviorDocument = await behaviorResponse.json();
+  expect(behaviorDocument.windows.at(-1)).toMatchObject({
+    period: "ALL_TIME",
+    total_pnl_usd: 30,
+  });
+
   await page.goto(`/wallets/${stackWalletAddress}`);
 
   await expect(page.getByRole("heading", { name: "Wallet accounting" })).toBeVisible();
+  await expect(page.getByTestId("wallet-behavior")).toBeVisible();
+  await expect(page.getByTestId("behavior-windows")).toContainText("ALL_TIME window");
   await expect(page.getByTestId("clean-pnl")).toContainText("30.00");
   await expect(page.getByTestId("wallet-lots")).toContainText(
     "stack-wallet-accounting-buy-0001",
