@@ -16,6 +16,14 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from starlette.middleware.base import RequestResponseEndpoint
 
 from paper_trade.config import Settings
+from paper_trade.discovery_funnel import (
+    DiscoveryFunnelRequest,
+    DiscoveryFunnelRun,
+    DiscoveryFunnelRunError,
+    DiscoveryFunnelService,
+    DiscoveryFunnelStore,
+    PostgresDiscoveryFunnelStore,
+)
 from paper_trade.health import (
     HealthComponents,
     HealthService,
@@ -93,6 +101,37 @@ class HealthResponse(BaseModel):
     components: HealthComponents
 
 
+def _discovery_funnel_service(
+    *,
+    funnel_store: Optional[DiscoveryFunnelStore],
+    early_buyer_source: Optional[EarlyBuyerSource],
+    token_store: Optional[TokenStore],
+    market_state_store: Optional[MarketStateStore],
+    wallet_scoring_service: Optional[WalletScoringService],
+    configuration_store: Optional[ResearchConfigurationStore],
+) -> Optional[DiscoveryFunnelService]:
+    """Compose the Discovery funnel from the sources this application has wired."""
+    if (
+        funnel_store is None
+        or early_buyer_source is None
+        or token_store is None
+        or market_state_store is None
+        or wallet_scoring_service is None
+        or configuration_store is None
+    ):
+        return None
+    return DiscoveryFunnelService(
+        HistoricalWinnerDiscoveryService(
+            token_store=token_store,
+            market_state_store=market_state_store,
+            early_buyer_source=early_buyer_source,
+        ),
+        wallet_scoring_service,
+        funnel_store,
+        configuration_store,
+    )
+
+
 def create_app(
     health_service: Optional[HealthService] = None,
     settings: Optional[Settings] = None,
@@ -106,6 +145,8 @@ def create_app(
     wallet_scoring_service: Optional[WalletScoringService] = None,
     early_buyer_source: Optional[EarlyBuyerSource] = None,
     historical_winner_discovery_store: Optional[HistoricalWinnerDiscoveryStore] = None,
+    discovery_funnel_store: Optional[DiscoveryFunnelStore] = None,
+    discovery_funnel_service: Optional[DiscoveryFunnelService] = None,
 ) -> FastAPI:
     runtime_settings = settings or Settings()
 
@@ -160,6 +201,20 @@ def create_app(
             application.state.wallet_scoring_store,
             application.state.wallet_accounting_store,
         )
+        application.state.discovery_funnel_store = discovery_funnel_store or (
+            PostgresDiscoveryFunnelStore(engine)
+        )
+        application.state.discovery_funnel_service = (
+            discovery_funnel_service
+            or _discovery_funnel_service(
+                funnel_store=application.state.discovery_funnel_store,
+                early_buyer_source=early_buyer_source,
+                token_store=application.state.token_store,
+                market_state_store=application.state.market_state_store,
+                wallet_scoring_service=application.state.wallet_scoring_service,
+                configuration_store=application.state.research_configuration_store,
+            )
+        )
         try:
             yield
         finally:
@@ -205,6 +260,18 @@ def create_app(
         )
     app.state.early_buyer_source = early_buyer_source
     app.state.historical_winner_discovery_store = historical_winner_discovery_store
+    app.state.discovery_funnel_store = discovery_funnel_store
+    app.state.discovery_funnel_service = (
+        discovery_funnel_service
+        or _discovery_funnel_service(
+            funnel_store=discovery_funnel_store,
+            early_buyer_source=early_buyer_source,
+            token_store=token_store,
+            market_state_store=market_state_store,
+            wallet_scoring_service=app.state.wallet_scoring_service,
+            configuration_store=research_configuration_store,
+        )
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(
@@ -354,6 +421,18 @@ def create_app(
             )
         return store
 
+    def discovery_funnel_store_or_unavailable() -> DiscoveryFunnelStore:
+        store = app.state.discovery_funnel_store
+        if store is None:
+            raise HTTPException(status_code=503, detail="Discovery funnel store is unavailable")
+        return store
+
+    def discovery_funnel_service_or_unavailable() -> DiscoveryFunnelService:
+        service = app.state.discovery_funnel_service
+        if service is None:
+            raise HTTPException(status_code=503, detail="Discovery funnel is unavailable")
+        return service
+
     def token_service() -> TokenRegistrationService:
         configuration = app.state.research_configuration_store
         if configuration is None:
@@ -422,6 +501,22 @@ def create_app(
         if discovery is None:
             raise HTTPException(status_code=404, detail="No historical winner cohort has been run")
         return discovery
+
+    @app.post("/discovery/funnel", response_model=DiscoveryFunnelRun, status_code=201)
+    async def run_discovery_funnel(request: DiscoveryFunnelRequest) -> DiscoveryFunnelRun:
+        try:
+            return await discovery_funnel_service_or_unavailable().run(request)
+        except DiscoveryFunnelRunError as error:
+            raise HTTPException(status_code=502, detail=str(error)) from error
+
+    @app.get("/discovery/funnel/latest", response_model=DiscoveryFunnelRun)
+    async def latest_discovery_funnel() -> DiscoveryFunnelRun:
+        run = await discovery_funnel_store_or_unavailable().latest()
+        if run is None:
+            raise HTTPException(
+                status_code=404, detail="No discovery funnel run has been recorded"
+            )
+        return run
 
     @app.post(
         "/wallets/{address}/accounting/recordings",
