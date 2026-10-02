@@ -1,0 +1,218 @@
+{
+  "batches": [
+    {
+      "connection_id": "recorded-realtime-connection-0001",
+      "connected_at": "2026-09-28T10:00:00Z",
+      "reconnected": false,
+      "activity": [
+        {
+          "event_id": "recorded-realtime-buy-0001",
+          "wallet_address": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+          "movement_type": "BUY",
+          "quantity": 1000,
+          "notional_usd": 500,
+          "venue": "recorded-pumpswap-pool",
+          "signature": "recorded-realtime-buy-0001",
+          "slot": 314159400,
+          "chain_time": "2026-09-28T10:00:00Z",
+          "observed_at": "2026-09-28T10:00:04Z",
+          "evidence": ["Recorded confirmed BUY against the recorded PumpSwap pool."],
+          "coverage": {
+            "provider": "recorded-realtime",
+            "as_of_start": "2026-09-28T09:59:55Z",
+            "as_of_end": "2026-09-28T10:00:05Z",
+            "complete": true,
+            "commitment": "confirmed",
+            "freshness_seconds": 4,
+            "normalization_version": "realtime/v1",
+            "unknown_fields": [],
+            "warnings": []
+          }
+        },
+        {
+          "event_id": "recorded-realtime-sell-0002",
+          "wallet_address": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+          "movement_type": "SELL",
+          "quantity": 400,
+          "notional_usd": 260,
+          "venue": "recorded-pumpswap-pool",
+          "signature": "recorded-realtime-sell-0002",
+          "slot": 314159401,
+          "chain_time": "2026-09-28T10:00:05Z",
+          "observed_at": "2026-09-28T10:00:07Z",
+          "evidence": ["Recorded confirmed SELL against the recorded PumpSwap pool."],
+          "coverage": {
+            "provider": "recorded-realtime",
+            "as_of_start": "2026-09-28T10:00:00Z",
+            "as_of_end": "2026-09-28T10:00:10Z",
+            "complete": true,
+            "commitment": "confirmed",
+            "freshness_seconds": 2,
+            "normalization_version": "realtime/v1",
+            "unknown_fields": [],
+            "warnings": []
+          }
+        },
+        {
+          "event_id": "recorded-realtime-transfer-in-0003",
+          "wallet_address": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+          "movement_type": "TRANSFER_IN",
+          "quantity": 100,
+          "notional_usd": null,
+          "venue": null,
+          "signature": "recorded-realtime-transfer-in-0003",
+          "slot": 314159402,
+          "chain_time": "2026-09-28T10:00:08Z",
+          "observed_at": "2026-09-28T10:00:10Z",
+          "evidence": ["Recorded confirmed inbound SPL transfer."],
+          "coverage": {
+            "provider": "recorded-realtime",
+            "as_of_start": "2026-09-28T10:00:00Z",
+            "as_of_end": "2026-09-28T10:00:12Z",
+            "complete": true,
+            "commitment": "confirmed",
+            "freshness_seconds": 2,
+            "normalization_version": "realtime/v1",
+            "unknown_fields": [],
+            "warnings": []
+          }
+        },
+        {
+          "event_id": "recorded-realtime-transfer-out-0004",
+          "wallet_address": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+          "movement_type": "TRANSFER_OUT",
+          "quantity": 50,
+          "notional_usd": null,
+          "venue": null,
+          "signature": "recorded-realtime-transfer-out-0004",
+          "slot": 314159403,
+          "chain_time": "2026-09-28T10:00:11Z",
+          "observed_at": "2026-09-28T10:00:13Z",
+          "evidence": ["Recorded confirmed outbound SPL transfer."],
+          "coverage": {
+            "provider": "recorded-realtime",
+            "as_of_start": "2026-09-28T10:00:00Z",
+            "as_of_end": "2026-09-28T10:00:15Z",
+            "complete": true,
+            "commitment": "confirmed",
+            "freshness_seconds": 2,
+            "normalization_version": "realtime/v1",
+            "unknown_fields": [],
+            "warnings": []
+          }
+        },
+        {
+          "event_id": "recorded-realtime-buy-unknown-0005",
+          "wallet_address": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+          "movement_type": "BUY",
+          "quantity": 200,
+          "notional_usd": null,
+          "venue": "recorded-pumpswap-pool",
+          "signature": "recorded-realtime-buy-unknown-0005",
+          "slot": 314159404,
+          "chain_time": "2026-09-28T10:00:14Z",
+          "observed_at": "2026-09-28T10:00:16Z",
+          "evidence": ["Recorded confirmed BUY with no recorded mark price."],
+          "coverage": {
+            "provider": "recorded-realtime",
+            "as_of_start": "2026-09-28T10:00:00Z",
+            "as_of_end": "2026-09-28T10:00:18Z",
+            "complete": false,
+            "commitment": "confirmed",
+            "freshness_seconds": 2,
+            "normalization_version": "realtime/v1",
+            "unknown_fields": ["notional_usd"],
+            "warnings": ["No recorded mark price is available for this confirmed BUY."]
+          }
+        },
+        {
+          "event_id": "recorded-realtime-unsubscribed-0006",
+          "wallet_address": "4wBqpZM9W7D6h2ZQ5E6o1CymCPG9hrpE7cXkYkKpE8Qm",
+          "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+          "movement_type": "BUY",
+          "quantity": 100,
+          "notional_usd": 30,
+          "venue": "recorded-pumpswap-pool",
+          "signature": "recorded-realtime-unsubscribed-0006",
+          "slot": 314159405,
+          "chain_time": "2026-09-28T10:00:17Z",
+          "observed_at": "2026-09-28T10:00:18Z",
+          "evidence": ["Recorded confirmed BUY for a Wallet that is not in SMART_WALLET."],
+          "coverage": {
+            "provider": "recorded-realtime",
+            "as_of_start": "2026-09-28T10:00:00Z",
+            "as_of_end": "2026-09-28T10:00:20Z",
+            "complete": true,
+            "commitment": "confirmed",
+            "freshness_seconds": 1,
+            "normalization_version": "realtime/v1",
+            "unknown_fields": [],
+            "warnings": []
+          }
+        }
+      ]
+    },
+    {
+      "connection_id": "recorded-realtime-connection-0002",
+      "connected_at": "2026-09-28T10:00:20Z",
+      "reconnected": true,
+      "activity": [
+        {
+          "event_id": "recorded-realtime-buy-0001-replayed",
+          "wallet_address": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+          "movement_type": "BUY",
+          "quantity": 1000,
+          "notional_usd": 500,
+          "venue": "recorded-pumpswap-pool",
+          "signature": "recorded-realtime-buy-0001",
+          "slot": 314159400,
+          "chain_time": "2026-09-28T10:00:00Z",
+          "observed_at": "2026-09-28T10:00:22Z",
+          "evidence": ["Replayed confirmed BUY resent after a reconnect."],
+          "coverage": {
+            "provider": "recorded-realtime",
+            "as_of_start": "2026-09-28T10:00:20Z",
+            "as_of_end": "2026-09-28T10:00:25Z",
+            "complete": true,
+            "commitment": "confirmed",
+            "freshness_seconds": 2,
+            "normalization_version": "realtime/v1",
+            "unknown_fields": [],
+            "warnings": []
+          }
+        },
+        {
+          "event_id": "recorded-realtime-processed-0007",
+          "wallet_address": "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+          "token_address": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+          "movement_type": "BUY",
+          "quantity": 300,
+          "notional_usd": 90,
+          "venue": "recorded-pumpswap-pool",
+          "signature": "recorded-realtime-processed-0007",
+          "slot": 314159406,
+          "chain_time": "2026-09-28T10:00:21Z",
+          "observed_at": "2026-09-28T10:00:23Z",
+          "evidence": ["Recorded processed BUY observed before confirmation."],
+          "coverage": {
+            "provider": "recorded-realtime",
+            "as_of_start": "2026-09-28T10:00:20Z",
+            "as_of_end": "2026-09-28T10:00:25Z",
+            "complete": true,
+            "commitment": "processed",
+            "freshness_seconds": 2,
+            "normalization_version": "realtime/v1",
+            "unknown_fields": [],
+            "warnings": []
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -19,6 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from paper_trade.realtime_tracking import SmartWalletSubscription
 from paper_trade.research_configuration import (
     ResearchConfigurationStore,
     VersionedResearchConfiguration,
@@ -696,6 +697,23 @@ class WalletScoringService:
 
     async def registry(self, address: str) -> WalletRegistry:
         return await self._scoring_store.registry(address)
+
+    async def smart_wallets(self, as_of: datetime) -> list[SmartWalletSubscription]:
+        """Return every Wallet whose current Registry state is SMART_WALLET."""
+        subscriptions: list[SmartWalletSubscription] = []
+        for address in await self._wallet_store.list_wallets():
+            registry = await self._scoring_store.registry(address)
+            if registry.state != "SMART_WALLET":
+                continue
+            score = await self._scoring_store.current_score(address, as_of)
+            subscriptions.append(
+                SmartWalletSubscription(
+                    address=address,
+                    score=None if score is None else score.total_score,
+                    as_of=as_of,
+                )
+            )
+        return subscriptions
 
     async def leaderboard(
         self,

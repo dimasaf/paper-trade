@@ -45,6 +45,16 @@ from paper_trade.market_state import (
 )
 from paper_trade.observability import configure_logging
 from paper_trade.probes import DatabaseProbe, RedisProbe, WorkerProbe
+from paper_trade.realtime_tracking import (
+    PostgresRealtimeTrackingStore,
+    RealtimeSource,
+    RealtimeTrackingRun,
+    RealtimeTrackingService,
+    RealtimeTrackingStatus,
+    RealtimeTrackingStore,
+    RealtimeWalletEvent,
+    SmartWalletSource,
+)
 from paper_trade.research_configuration import (
     CreateResearchConfiguration,
     PostgresResearchConfigurationStore,
@@ -143,6 +153,10 @@ def create_app(
     wallet_copyability_store: Optional[WalletCopyabilityStore] = None,
     wallet_scoring_store: Optional[WalletScoringStore] = None,
     wallet_scoring_service: Optional[WalletScoringService] = None,
+    realtime_source: Optional[RealtimeSource] = None,
+    smart_wallet_source: Optional[SmartWalletSource] = None,
+    realtime_tracking_store: Optional[RealtimeTrackingStore] = None,
+    realtime_tracking_service: Optional[RealtimeTrackingService] = None,
     early_buyer_source: Optional[EarlyBuyerSource] = None,
     historical_winner_discovery_store: Optional[HistoricalWinnerDiscoveryStore] = None,
     discovery_funnel_store: Optional[DiscoveryFunnelStore] = None,
@@ -201,6 +215,18 @@ def create_app(
             application.state.wallet_scoring_store,
             application.state.wallet_accounting_store,
         )
+        application.state.realtime_tracking_store = realtime_tracking_store or (
+            PostgresRealtimeTrackingStore(engine)
+        )
+        application.state.realtime_tracking_service = realtime_tracking_service or (
+            None
+            if realtime_source is None
+            else RealtimeTrackingService(
+                realtime_source,
+                smart_wallet_source or application.state.wallet_scoring_service,
+                application.state.realtime_tracking_store,
+            )
+        )
         application.state.discovery_funnel_store = discovery_funnel_store or (
             PostgresDiscoveryFunnelStore(engine)
         )
@@ -231,6 +257,10 @@ def create_app(
     app.state.wallet_copyability_store = wallet_copyability_store
     app.state.wallet_scoring_store = wallet_scoring_store
     app.state.wallet_scoring_service = wallet_scoring_service
+    app.state.realtime_source = realtime_source
+    app.state.smart_wallet_source = smart_wallet_source
+    app.state.realtime_tracking_store = realtime_tracking_store
+    app.state.realtime_tracking_service = realtime_tracking_service
     if wallet_accounting_store is not None and market_state_store is not None:
         if wallet_behavior_store is None:
             app.state.wallet_behavior_store = WalletBehaviorService(
@@ -258,6 +288,18 @@ def create_app(
             wallet_scoring_store,
             wallet_accounting_store,
         )
+    if (
+        realtime_tracking_service is None
+        and realtime_source is not None
+        and realtime_tracking_store is not None
+    ):
+        wallet_tracking_source = smart_wallet_source or app.state.wallet_scoring_service
+        if wallet_tracking_source is not None:
+            app.state.realtime_tracking_service = RealtimeTrackingService(
+                realtime_source,
+                wallet_tracking_source,
+                realtime_tracking_store,
+            )
     app.state.early_buyer_source = early_buyer_source
     app.state.historical_winner_discovery_store = historical_winner_discovery_store
     app.state.discovery_funnel_store = discovery_funnel_store
@@ -624,6 +666,28 @@ def create_app(
         return await wallet_scoring_service_or_unavailable().reassess_all(
             as_of or datetime.now(timezone.utc)
         )
+
+    def realtime_tracking_service_or_unavailable() -> RealtimeTrackingService:
+        service = app.state.realtime_tracking_service
+        if service is None:
+            raise HTTPException(status_code=503, detail="Realtime tracking is unavailable")
+        return service
+
+    @app.post("/realtime/polls", response_model=RealtimeTrackingRun, status_code=201)
+    async def poll_realtime_tracking(as_of: Optional[datetime] = None) -> RealtimeTrackingRun:
+        return await realtime_tracking_service_or_unavailable().poll(
+            as_of or datetime.now(timezone.utc)
+        )
+
+    @app.get("/realtime/feed", response_model=list[RealtimeWalletEvent])
+    async def realtime_feed(
+        limit: int = Query(default=50, ge=1, le=500),
+    ) -> list[RealtimeWalletEvent]:
+        return await realtime_tracking_service_or_unavailable().feed(limit)
+
+    @app.get("/realtime/status", response_model=RealtimeTrackingStatus)
+    async def realtime_tracking_status() -> RealtimeTrackingStatus:
+        return await realtime_tracking_service_or_unavailable().status()
 
     @app.get("/health", response_model=HealthResponse)
     async def health(request: Request) -> HealthResponse:
