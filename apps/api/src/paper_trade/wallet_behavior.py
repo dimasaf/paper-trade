@@ -20,10 +20,10 @@ from paper_trade.wallet_accounting import (
     WalletAccountingModel,
     WalletAccountingStore,
     WalletHistoryCoverage,
-    WalletTrade,
 )
 
 BehaviorPeriod = Literal["24H", "7D", "30D", "90D", "ALL_TIME"]
+_BEHAVIOR_PERIODS: tuple[BehaviorPeriod, ...] = ("24H", "7D", "30D", "90D", "ALL_TIME")
 BehaviorClassificationName = Literal["EARLY_BUYER", "SCALPER", "MULTI_TOKEN_TRADER"]
 BehaviorFlagName = Literal[
     "INCOMPLETE_HISTORY_COVERAGE",
@@ -339,17 +339,30 @@ class WalletBehaviorService:
                 accounting,
                 evidence_by_token,
             )
-            for period in ("24H", "7D", "30D", "90D", "ALL_TIME")
+            for period in _BEHAVIOR_PERIODS
         ]
         warnings = list(dict.fromkeys(accounting.warnings + market.coverage.warnings))
         return WalletBehavior(
             address=address,
             as_of=as_of,
             metric_definitions=[
-                "Windows include realized clean PnL on exits in the period and clean open-lot PnL for lots entered in the period, marked at the requested as-of time.",
-                "ROI is clean PnL divided by the clean cost basis of included exits and open lots; it is UNKNOWN when no included cost basis exists.",
-                "Win rate, profit factor, drawdown, concentration, and profitable periods use realized clean FIFO exits only.",
-                "Early entry means a recorded buy within one hour of a recorded token creation time. Classifications are descriptive and have no score effect.",
+                (
+                    "Windows include realized clean PnL on exits in the period and clean "
+                    "open-lot PnL for lots entered in the period, marked at the requested "
+                    "as-of time."
+                ),
+                (
+                    "ROI is clean PnL divided by the clean cost basis of included exits and "
+                    "open lots; it is UNKNOWN when no included cost basis exists."
+                ),
+                (
+                    "Win rate, profit factor, drawdown, concentration, and profitable periods use "
+                    "realized clean FIFO exits only."
+                ),
+                (
+                    "Early entry means a recorded buy within one hour of a recorded token creation "
+                    "time. Classifications are descriptive and have no score effect."
+                ),
             ],
             windows=windows,
             classifications=self._classifications(windows[-1]),
@@ -484,7 +497,10 @@ class WalletBehaviorService:
         evidence_by_token: dict[str, WalletMarketEvidence],
     ) -> WalletBehaviorWindow:
         starts_at = _window_start(period, as_of)
-        includes = lambda value: starts_at is None or value >= starts_at
+
+        def includes(value: datetime) -> bool:
+            return starts_at is None or value >= starts_at
+
         selected_closes = [close for close in closes if includes(close.closed_at)]
         selected_open_lots = [lot for lot in open_lots if includes(lot.acquired_at)]
         pnl_values = [close.pnl_usd for close in selected_closes]
@@ -527,7 +543,9 @@ class WalletBehaviorService:
             period=period,
             starts_at=starts_at,
             as_of=as_of,
-            definition="Clean FIFO metrics; only facts available at the requested as-of time are included.",
+            definition=(
+                "Clean FIFO metrics; only facts available at the requested as-of time are included."
+            ),
             realized_pnl_usd=_round(realized),
             unrealized_pnl_usd=_round(unrealized) if unrealized is not None else None,
             total_pnl_usd=_round(total) if total is not None else None,
@@ -664,9 +682,15 @@ class WalletBehaviorService:
             classifications.append(
                 WalletBehaviorClassification(
                     name="EARLY_BUYER",
-                    description="Describes recorded entries within one hour of token creation; it does not indicate quality or score the Wallet.",
+                    description=(
+                        "Describes recorded entries within one hour of token creation; "
+                        "it does not indicate quality or score the Wallet."
+                    ),
                     evidence=[
-                        f"{all_time.meme.early_entry_rate_percent:g}% of entries with recorded creation times were within one hour."
+                        (
+                            f"{all_time.meme.early_entry_rate_percent:g}% of entries with "
+                            "recorded creation times were within one hour."
+                        )
                     ],
                 )
             )
@@ -675,7 +699,10 @@ class WalletBehaviorService:
             classifications.append(
                 WalletBehaviorClassification(
                     name="SCALPER",
-                    description="Describes a median recorded holding time of one hour or less; it does not indicate quality or score the Wallet.",
+                    description=(
+                        "Describes a median recorded holding time of one hour or less; "
+                        "it does not indicate quality or score the Wallet."
+                    ),
                     evidence=[f"Median recorded holding time was {holding_median:g} seconds."],
                 )
             )
@@ -683,7 +710,10 @@ class WalletBehaviorService:
             classifications.append(
                 WalletBehaviorClassification(
                     name="MULTI_TOKEN_TRADER",
-                    description="Describes activity across at least three Tokens; it does not indicate quality or score the Wallet.",
+                    description=(
+                        "Describes activity across at least three Tokens; "
+                        "it does not indicate quality or score the Wallet."
+                    ),
                     evidence=[f"Recorded entries cover {all_time.meme.entry_count} Tokens."],
                 )
             )
@@ -703,7 +733,10 @@ class WalletBehaviorService:
             flags.append(
                 WalletBehaviorFlag(
                     name="INCOMPLETE_HISTORY_COVERAGE",
-                    wording="Recorded coverage is incomplete, so this behavior summary may omit earlier activity; this is not a finding about the Wallet.",
+                    wording=(
+                        "Recorded coverage is incomplete, so this behavior summary may omit "
+                        "earlier activity; this is not a finding about the Wallet."
+                    ),
                     evidence=[field for item in incomplete for field in item.unknown_fields]
                     or ["One or more recorded sources declared incomplete coverage."],
                     confidence="HIGH",
@@ -714,7 +747,10 @@ class WalletBehaviorService:
             flags.append(
                 WalletBehaviorFlag(
                     name="TRANSFER_DERIVED_INVENTORY",
-                    wording="Transfer-derived inventory is present and is excluded from clean behavior metrics; it does not establish the source or intent of the transfer.",
+                    wording=(
+                        "Transfer-derived inventory is present and is excluded from clean behavior "
+                        "metrics; it does not establish the source or intent of the transfer."
+                    ),
                     evidence=[
                         f"{item.movement_type} {item.quantity:g} units in {item.source_signature}."
                         for item in accounting.contamination
@@ -727,7 +763,10 @@ class WalletBehaviorService:
             flags.append(
                 WalletBehaviorFlag(
                     name="UNCLASSIFIED_ACTIVITY",
-                    wording="Some recorded activity remains unclassified and is not treated as a trade; additional evidence would be needed to interpret it.",
+                    wording=(
+                        "Some recorded activity remains unclassified and is not treated as a "
+                        "trade; additional evidence would be needed to interpret it."
+                    ),
                     evidence=[
                         f"{item.signature}: {item.evidence[0]}"
                         for item in accounting.unknown_movements
@@ -736,22 +775,30 @@ class WalletBehaviorService:
                     coverage=coverage,
                 )
             )
-        rapid = [
-            (token, entered_at, evidence_by_token[token])
-            for token, entered_at in entries.items()
-            if token in evidence_by_token
-            and evidence_by_token[token].token_created_at is not None
-            and 0 <= (entered_at - evidence_by_token[token].token_created_at).total_seconds() <= 60
-        ]
+        rapid: list[tuple[str, datetime, WalletMarketEvidence, datetime]] = []
+        for token, entered_at in entries.items():
+            entry_evidence = evidence_by_token.get(token)
+            if entry_evidence is None or entry_evidence.token_created_at is None:
+                continue
+            elapsed = (entered_at - entry_evidence.token_created_at).total_seconds()
+            if 0 <= elapsed <= 60:
+                rapid.append((token, entered_at, entry_evidence, entry_evidence.token_created_at))
         if rapid:
             flags.append(
                 WalletBehaviorFlag(
                     name="RAPID_TOKEN_ENTRY",
-                    wording="A recorded entry occurred within one minute of token creation; this timing can warrant review and does not identify intent, ownership, or wrongdoing.",
+                    wording=(
+                        "A recorded entry occurred within one minute of token creation; this "
+                        "timing can warrant review and does not identify intent, ownership, or "
+                        "wrongdoing."
+                    ),
                     evidence=[
-                        f"{token}: entry {int((entered_at - item.token_created_at).total_seconds())} seconds after recorded creation; {item.evidence[0]}"
-                        for token, entered_at, item in rapid
-                        if item.token_created_at is not None
+                        (
+                            f"{token}: entry "
+                            f"{int((entered_at - created_at).total_seconds())} seconds after "
+                            f"recorded creation; {item.evidence[0]}"
+                        )
+                        for token, entered_at, item, created_at in rapid
                     ],
                     confidence="MEDIUM" if not market_coverage.complete else "HIGH",
                     coverage=coverage,

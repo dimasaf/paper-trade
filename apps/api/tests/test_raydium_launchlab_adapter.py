@@ -98,8 +98,7 @@ async def test_documented_program_activity_normalizes_creation_and_one_migration
     assert source.rejected_record_count == 1
 
 
-async def test_http_registration_preserves_raydium_provenance_and_migration_without_duplicates(
-) -> None:
+async def test_http_registration_preserves_raydium_provenance_without_duplicates() -> None:
     client = _client()
     creation, migration = await _source().launch_events()
 

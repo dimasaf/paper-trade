@@ -6,11 +6,11 @@ fixtures so reconstruction is deterministic and provider omissions remain
 visible in the result.
 """
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
-import json
 from typing import Any, Literal, Optional, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -259,9 +259,7 @@ class WalletAccountingStore(Protocol):
 class WalletAccountingRecordingStore(WalletAccountingStore, Protocol):
     """Durable ingestion contract for canonical, recorded Wallet accounting facts."""
 
-    async def record(
-        self, request: RecordWalletAccountingRequest
-    ) -> RecordWalletAccountingResult:
+    async def record(self, request: RecordWalletAccountingRequest) -> RecordWalletAccountingResult:
         """Persist a replay-safe recorded history and point-in-time mark prices."""
 
 
@@ -548,9 +546,7 @@ class InMemoryRecordedWalletAccountingStore:
         self._coverages: dict[str, dict[str, WalletHistoryCoverage]] = {}
         self._prices: dict[tuple[str, datetime, str], WalletMarkPrice] = {}
 
-    async def record(
-        self, request: RecordWalletAccountingRequest
-    ) -> RecordWalletAccountingResult:
+    async def record(self, request: RecordWalletAccountingRequest) -> RecordWalletAccountingResult:
         address = request.history.address
         activities = self._activities.setdefault(address, {})
         coverages = self._coverages.setdefault(address, {})
@@ -559,7 +555,9 @@ class InMemoryRecordedWalletAccountingStore:
         for activity in request.history.activities:
             existing = activities.get(activity.signature)
             if existing is None:
-                activities[activity.signature] = WalletActivity.model_validate(activity.model_dump())
+                activities[activity.signature] = WalletActivity.model_validate(
+                    activity.model_dump()
+                )
                 activity_count += 1
             elif existing != activity:
                 raise ValueError("conflicting recorded Wallet activity")
@@ -571,11 +569,11 @@ class InMemoryRecordedWalletAccountingStore:
             )
         for price in request.mark_prices:
             key = (price.token_address, price.observed_at, price.provider)
-            existing = self._prices.get(key)
-            if existing is None:
+            existing_price = self._prices.get(key)
+            if existing_price is None:
                 self._prices[key] = WalletMarkPrice.model_validate(price.model_dump())
                 mark_count += 1
-            elif existing != price:
+            elif existing_price != price:
                 raise ValueError("conflicting recorded Wallet mark price")
         return RecordWalletAccountingResult(
             created=bool(activity_count or mark_count or coverage_was_new),
@@ -587,7 +585,7 @@ class InMemoryRecordedWalletAccountingStore:
         activities = self._activities.get(address)
         if not activities:
             raise KeyError(address)
-        coverage = _coverage_for_as_of(self._coverages.get(address, {}).values(), as_of)
+        coverage = _coverage_for_as_of(list(self._coverages.get(address, {}).values()), as_of)
         service = WalletAccountingService(
             history_source=RecordedWalletHistorySource(
                 pages=[list(activities.values())], coverage=coverage
@@ -603,9 +601,7 @@ class PostgresWalletAccountingStore:
     def __init__(self, engine: AsyncEngine) -> None:
         self._engine = engine
 
-    async def record(
-        self, request: RecordWalletAccountingRequest
-    ) -> RecordWalletAccountingResult:
+    async def record(self, request: RecordWalletAccountingRequest) -> RecordWalletAccountingResult:
         address = request.history.address
         activity_count = 0
         mark_count = 0
@@ -648,7 +644,10 @@ class PostgresWalletAccountingStore:
                         ),
                         {"wallet_address": address, "signature": activity.signature},
                     )
-                    if WalletActivity.model_validate(_json_value(existing.scalar_one())) != activity:
+                    if (
+                        WalletActivity.model_validate(_json_value(existing.scalar_one()))
+                        != activity
+                    ):
                         raise ValueError("conflicting recorded Wallet activity")
             coverage_key = _coverage_key(request.history.coverage)
             inserted_coverage = await connection.execute(

@@ -110,9 +110,7 @@ async def test_recorded_behavior_calculates_all_windows_without_future_evidence(
     assert "future observation" not in str(behavior.model_dump())
 
 
-def test_wallet_behavior_endpoint_exposes_definitions_windows_classifications_flags_and_unknowns() -> (
-    None
-):
+def test_wallet_behavior_endpoint_exposes_definitions_and_flags() -> None:
     client = TestClient(create_app(wallet_behavior_store=behavior_store()))
 
     response = client.get(f"/wallets/{WALLET}/behavior?as_of=2026-09-28T10:00:00Z")

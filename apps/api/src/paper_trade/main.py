@@ -272,7 +272,9 @@ def create_app(
     def wallet_recording_store() -> WalletAccountingRecordingStore:
         store = app.state.wallet_accounting_store
         if store is None or not isinstance(store, WalletAccountingRecordingStore):
-            raise HTTPException(status_code=503, detail="Wallet accounting ingestion is unavailable")
+            raise HTTPException(
+                status_code=503, detail="Wallet accounting ingestion is unavailable"
+            )
         return store
 
     def wallet_behavior_store_or_unavailable() -> WalletBehaviorStore:
@@ -385,7 +387,9 @@ def create_app(
         response: Response,
     ) -> RecordWalletAccountingResult:
         if request.history.address != address:
-            raise HTTPException(status_code=422, detail="Wallet address does not match recorded history")
+            raise HTTPException(
+                status_code=422, detail="Wallet address does not match recorded history"
+            )
         try:
             recorded = await wallet_recording_store().record(request)
         except ValueError as error:
