@@ -340,6 +340,82 @@ const accounting = {
   warnings: ["Recorded fixture has no earlier history"],
 };
 
+const relationships = {
+  address: walletAddress,
+  as_of: "2026-09-28T10:00:00Z",
+  configuration_id: "00000000-0000-0000-0000-000000000001",
+  configuration_version: 1,
+  relationships: [
+    {
+      wallets: [stackWalletAddress, walletAddress],
+      confidence: "HIGH",
+      as_of: "2026-09-28T10:00:00Z",
+      wording:
+        "Recorded activity shows 2 behavioral evidence type(s). This describes observable patterns only and does not establish shared ownership, control, or intent.",
+      evidence: [
+        {
+          evidence_type: "COMMON_FUNDING",
+          wording:
+            "Both Wallets received recorded funding from the same source address; shared funding is behavioral evidence and does not establish common ownership or control.",
+          evidence: [
+            "fund-a funded the first Wallet from the recorded source, and fund-b funded the second Wallet from the same source.",
+          ],
+          observed_at: "2026-09-28T08:30:00Z",
+          confidence: "HIGH",
+        },
+        {
+          evidence_type: "SYNCHRONIZED_TRADES",
+          wording:
+            "Both Wallets bought the same Token inside the configured window; synchronized timing is behavioral evidence and does not establish coordination.",
+          evidence: [
+            "Both Wallets bought the recorded Token 30 seconds apart within the configured window.",
+          ],
+          observed_at: "2026-09-28T09:05:00Z",
+          confidence: "MEDIUM",
+        },
+      ],
+      coverage: [
+        { source: "HELIUS", complete: true, unknown_fields: [] },
+        {
+          source: "RECORDED_WALLET_FUNDING",
+          complete: true,
+          unknown_fields: [],
+        },
+      ],
+      unknowns: [],
+      warnings: [],
+    },
+  ],
+  contributing_independent: {
+    raw_wallet_count: 2,
+    contributing_independent_wallet_count: 1,
+    groups: [
+      {
+        wallets: [stackWalletAddress, walletAddress],
+        representative: stackWalletAddress,
+        reason:
+          "These Wallets are connected by at least one recorded relationship at or above the configured MEDIUM confidence threshold.",
+      },
+    ],
+    as_of: "2026-09-28T10:00:00Z",
+    configuration_id: "00000000-0000-0000-0000-000000000001",
+    configuration_version: 1,
+    confidence_threshold: "MEDIUM",
+    evidence: [
+      "2 recorded Wallet(s) collapse to 1 Contributing-independent Wallet(s) at or above the MEDIUM confidence threshold.",
+    ],
+    unknowns: [],
+  },
+  coverage: [
+    { source: "HELIUS", complete: true, unknown_fields: [] },
+    { source: "RECORDED_WALLET_FUNDING", complete: true, unknown_fields: [] },
+  ],
+  unknowns: [
+    "COMMON_FUNDING: recorded funding evidence is unavailable for one recorded Wallet.",
+  ],
+  warnings: [],
+};
+
 test("running Docker stack persists recorded Wallet accounting for the detail journey", async ({
   page,
 }) => {
@@ -534,5 +610,32 @@ test("Wallet detail shows FIFO accounting, contamination, failed and unknown his
   );
   await expect(page.getByTestId("copyability-coverage")).toContainText(
     "historical_pool_state",
+  );
+});
+
+test("Wallet detail shows related Wallets, evidence, confidence, and unknowns", async ({
+  page,
+}) => {
+  await page.route("**/wallets/**/accounting*", async (route) => {
+    await route.fulfill({ json: accounting });
+  });
+  await page.route("**/wallets/**/relationships*", async (route) => {
+    await route.fulfill({ json: relationships });
+  });
+
+  await page.goto(`/wallets/${walletAddress}`);
+
+  await expect(page.getByTestId("wallet-relationships")).toBeVisible();
+  await expect(page.getByTestId("related-wallets")).toContainText(
+    "COMMON_FUNDING",
+  );
+  await expect(page.getByTestId("related-wallets")).toContainText(
+    "Confidence: HIGH",
+  );
+  await expect(
+    page.getByTestId("contributing-independent-count"),
+  ).toContainText("contributing-independent 1 at or above MEDIUM confidence");
+  await expect(page.getByTestId("relationship-unknowns")).toContainText(
+    "COMMON_FUNDING",
   );
 });

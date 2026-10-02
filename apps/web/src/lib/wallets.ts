@@ -334,6 +334,68 @@ export type WalletLeaderboardEntry = {
   warnings: string[];
 };
 
+export type RelationshipEvidenceType =
+  | "COMMON_FUNDING"
+  | "INTER_WALLET_TRANSFER"
+  | "SYNCHRONIZED_TRADES"
+  | "TRANSACTION_PATTERN_SIMILARITY"
+  | "SHARED_TOKEN_HISTORY";
+
+export type RelationshipConfidence = "LOW" | "MEDIUM" | "HIGH";
+
+export type RelationshipCoverage = {
+  source: string;
+  complete: boolean;
+  unknown_fields: string[];
+};
+
+export type WalletRelationshipEvidence = {
+  evidence_type: RelationshipEvidenceType;
+  wording: string;
+  evidence: string[];
+  observed_at: string;
+  confidence: RelationshipConfidence;
+};
+
+export type WalletRelationship = {
+  wallets: string[];
+  confidence: RelationshipConfidence;
+  as_of: string;
+  wording: string;
+  evidence: WalletRelationshipEvidence[];
+  coverage: RelationshipCoverage[];
+  unknowns: string[];
+  warnings: string[];
+};
+
+export type ContributingIndependentCount = {
+  raw_wallet_count: number;
+  contributing_independent_wallet_count: number;
+  groups: Array<{
+    wallets: string[];
+    representative: string;
+    reason: string;
+  }>;
+  as_of: string;
+  configuration_id: string;
+  configuration_version: number;
+  confidence_threshold: RelationshipConfidence;
+  evidence: string[];
+  unknowns: string[];
+};
+
+export type WalletRelationships = {
+  address: string;
+  as_of: string;
+  configuration_id: string;
+  configuration_version: number;
+  relationships: WalletRelationship[];
+  contributing_independent: ContributingIndependentCount;
+  coverage: RelationshipCoverage[];
+  unknowns: string[];
+  warnings: string[];
+};
+
 export async function fetchWalletScore(
   address: string,
   asOf: string,
@@ -387,4 +449,18 @@ export async function fetchWalletLeaderboard(
   );
   if (!response.ok) throw new Error("Wallet leaderboard request failed");
   return (await response.json()) as WalletLeaderboardEntry[];
+}
+
+export async function fetchWalletRelationships(
+  address: string,
+  asOf: string,
+  signal?: AbortSignal,
+): Promise<WalletRelationships | null> {
+  const response = await fetch(
+    `${apiUrl}/wallets/${encodeURIComponent(address)}/relationships?as_of=${encodeURIComponent(asOf)}`,
+    { cache: "no-store", signal },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error("Wallet relationships request failed");
+  return (await response.json()) as WalletRelationships;
 }

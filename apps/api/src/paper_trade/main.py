@@ -88,6 +88,14 @@ from paper_trade.wallet_copyability import (
     WalletCopyabilityService,
     WalletCopyabilityStore,
 )
+from paper_trade.wallet_relationships import (
+    PostgresWalletRelationshipStore,
+    WalletFundingSource,
+    WalletRelationshipAnalysisResult,
+    WalletRelationships,
+    WalletRelationshipService,
+    WalletRelationshipStore,
+)
 from paper_trade.wallet_scoring import (
     LeaderboardSort,
     PostgresWalletScoringStore,
@@ -153,6 +161,9 @@ def create_app(
     wallet_copyability_store: Optional[WalletCopyabilityStore] = None,
     wallet_scoring_store: Optional[WalletScoringStore] = None,
     wallet_scoring_service: Optional[WalletScoringService] = None,
+    wallet_funding_source: Optional[WalletFundingSource] = None,
+    wallet_relationship_store: Optional[WalletRelationshipStore] = None,
+    wallet_relationship_service: Optional[WalletRelationshipService] = None,
     realtime_source: Optional[RealtimeSource] = None,
     smart_wallet_source: Optional[SmartWalletSource] = None,
     realtime_tracking_store: Optional[RealtimeTrackingStore] = None,
@@ -215,6 +226,17 @@ def create_app(
             application.state.wallet_scoring_store,
             application.state.wallet_accounting_store,
         )
+        application.state.wallet_relationship_store = wallet_relationship_store or (
+            PostgresWalletRelationshipStore(engine)
+        )
+        application.state.wallet_relationship_service = wallet_relationship_service or (
+            WalletRelationshipService(
+                application.state.wallet_accounting_store,
+                wallet_funding_source,
+                application.state.research_configuration_store,
+                application.state.wallet_relationship_store,
+            )
+        )
         application.state.realtime_tracking_store = realtime_tracking_store or (
             PostgresRealtimeTrackingStore(engine)
         )
@@ -257,6 +279,9 @@ def create_app(
     app.state.wallet_copyability_store = wallet_copyability_store
     app.state.wallet_scoring_store = wallet_scoring_store
     app.state.wallet_scoring_service = wallet_scoring_service
+    app.state.wallet_funding_source = wallet_funding_source
+    app.state.wallet_relationship_store = wallet_relationship_store
+    app.state.wallet_relationship_service = wallet_relationship_service
     app.state.realtime_source = realtime_source
     app.state.smart_wallet_source = smart_wallet_source
     app.state.realtime_tracking_store = realtime_tracking_store
@@ -300,6 +325,18 @@ def create_app(
                 wallet_tracking_source,
                 realtime_tracking_store,
             )
+    if (
+        wallet_relationship_service is None
+        and wallet_relationship_store is not None
+        and wallet_accounting_store is not None
+        and research_configuration_store is not None
+    ):
+        app.state.wallet_relationship_service = WalletRelationshipService(
+            wallet_accounting_store,
+            wallet_funding_source,
+            research_configuration_store,
+            wallet_relationship_store,
+        )
     app.state.early_buyer_source = early_buyer_source
     app.state.historical_winner_discovery_store = historical_winner_discovery_store
     app.state.discovery_funnel_store = discovery_funnel_store
@@ -443,6 +480,12 @@ def create_app(
         service = app.state.wallet_scoring_service
         if service is None:
             raise HTTPException(status_code=503, detail="Wallet scoring is unavailable")
+        return service
+
+    def wallet_relationship_service_or_unavailable() -> WalletRelationshipService:
+        service = app.state.wallet_relationship_service
+        if service is None:
+            raise HTTPException(status_code=503, detail="Wallet relationships are unavailable")
         return service
 
     def historical_winner_service() -> HistoricalWinnerDiscoveryService:
@@ -644,6 +687,37 @@ def create_app(
     @app.get("/wallets/{address}/registry", response_model=WalletRegistry)
     async def wallet_registry_detail(address: str) -> WalletRegistry:
         return await wallet_scoring_service_or_unavailable().registry(address)
+
+    @app.get("/wallets/{address}/relationships", response_model=WalletRelationships)
+    async def wallet_relationships_detail(
+        address: str,
+        as_of: Optional[datetime] = None,
+    ) -> WalletRelationships:
+        try:
+            return await wallet_relationship_service_or_unavailable().relationships(
+                address, as_of or datetime.now(timezone.utc)
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Wallet has no recorded history") from error
+
+    @app.post(
+        "/wallets/{address}/relationships",
+        response_model=WalletRelationshipAnalysisResult,
+    )
+    async def record_wallet_relationships(
+        address: str,
+        response: Response,
+        as_of: Optional[datetime] = None,
+    ) -> WalletRelationshipAnalysisResult:
+        try:
+            result = await wallet_relationship_service_or_unavailable().analyze(
+                address, as_of or datetime.now(timezone.utc)
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Wallet has no recorded history") from error
+        if result.created:
+            response.status_code = 201
+        return result
 
     @app.get("/wallets/scores", response_model=list[WalletLeaderboardEntry])
     async def wallet_score_leaderboard(

@@ -7,11 +7,14 @@ import SiteNav from "@/components/SiteNav";
 import {
   apiUrl,
   fetchWalletRegistry,
+  fetchWalletRelationships,
   fetchWalletScore,
   type WalletAccounting,
   type WalletBehavior,
   type WalletCopyability,
   type WalletRegistry,
+  type WalletRelationship,
+  type WalletRelationships,
   type WalletScore,
 } from "@/lib/wallets";
 
@@ -33,6 +36,8 @@ export default function WalletDetailPage() {
   );
   const [score, setScore] = useState<WalletScore | null>(null);
   const [registry, setRegistry] = useState<WalletRegistry | null>(null);
+  const [relationships, setRelationships] =
+    useState<WalletRelationships | null>(null);
   const [asOf] = useState(() => new Date().toISOString());
   const [error, setError] = useState<string | null>(null);
 
@@ -130,6 +135,23 @@ export default function WalletDetailPage() {
     return () => controller.abort();
   }, [address]);
 
+  useEffect(() => {
+    if (!address) return;
+    const controller = new AbortController();
+    async function loadRelationships() {
+      try {
+        setRelationships(
+          await fetchWalletRelationships(address, asOf, controller.signal),
+        );
+      } catch (reason) {
+        if (!(reason instanceof DOMException && reason.name === "AbortError"))
+          setRelationships(null);
+      }
+    }
+    void loadRelationships();
+    return () => controller.abort();
+  }, [address, asOf]);
+
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-6 py-14 sm:px-10">
       <SiteNav />
@@ -182,6 +204,9 @@ export default function WalletDetailPage() {
             <CopyabilitySummary copyability={copyability} />
           ) : null}
           {score ? <ScoreSummary score={score} registry={registry} /> : null}
+          {relationships ? (
+            <RelationshipsSummary relationships={relationships} />
+          ) : null}
 
           <section className="grid gap-4 md:grid-cols-2">
             <PnlCard
@@ -792,6 +817,151 @@ function ScoreSummary({
 
       {registry ? <RegistryHistory registry={registry} /> : null}
     </section>
+  );
+}
+
+function RelationshipsSummary({
+  relationships,
+}: {
+  relationships: WalletRelationships;
+}) {
+  const count = relationships.contributing_independent;
+  return (
+    <section className="mb-8 space-y-6" data-testid="wallet-relationships">
+      <header>
+        <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-300">
+          Related Wallets
+        </p>
+        <h2 className="mt-2 text-2xl font-semibold">
+          {count.contributing_independent_wallet_count} contributing-independent
+          of {count.raw_wallet_count}
+        </h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Relationships are behavioral evidence, never a claim about identity or
+          ownership. · configuration v{relationships.configuration_version} · as
+          of {timestamp(relationships.as_of)}
+        </p>
+      </header>
+
+      {relationships.warnings.length > 0 ? (
+        <div
+          role="alert"
+          className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100"
+        >
+          <strong>Relationship coverage warnings</strong>
+          <ul className="mt-2 list-disc pl-5">
+            {relationships.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div
+        data-testid="contributing-independent-count"
+        className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5 text-sm text-slate-300"
+      >
+        <h3 className="font-semibold text-white">
+          Contributing-independent Wallets
+        </h3>
+        <p className="mt-2">
+          Raw Wallet count {count.raw_wallet_count} · contributing-independent{" "}
+          {count.contributing_independent_wallet_count} at or above{" "}
+          {count.confidence_threshold} confidence.
+        </p>
+        <ul className="mt-3 space-y-2">
+          {count.groups.map((group) => (
+            <li key={group.representative}>
+              <span className="font-mono text-xs text-slate-400">
+                {group.wallets.join(", ")}
+              </span>
+              <p className="mt-1 text-xs text-slate-400">{group.reason}</p>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-xs text-slate-400">
+          Evidence: {count.evidence.join(" ")}
+        </p>
+      </div>
+
+      <div data-testid="related-wallets" className="space-y-4">
+        {relationships.relationships.length === 0 ? (
+          <p className="text-sm text-slate-400">
+            No recorded relationship reached the configured evidence thresholds.
+          </p>
+        ) : (
+          relationships.relationships.map((relationship) => (
+            <RelationshipCard
+              key={relationship.wallets.join("-")}
+              relationship={relationship}
+            />
+          ))
+        )}
+      </div>
+
+      {relationships.unknowns.length > 0 ? (
+        <div
+          data-testid="relationship-unknowns"
+          className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 text-sm text-amber-100"
+        >
+          <h3 className="font-semibold">Unknown relationship evidence</h3>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {relationships.unknowns.map((unknown) => (
+              <li key={unknown}>{unknown}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function RelationshipCard({
+  relationship,
+}: {
+  relationship: WalletRelationship;
+}) {
+  return (
+    <article className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5 text-sm">
+      <h3 className="font-semibold text-white">
+        {relationship.wallets.join(" ↔ ")}
+      </h3>
+      <p className="mt-1 text-slate-300">
+        Confidence: {relationship.confidence} · as of{" "}
+        {timestamp(relationship.as_of)}
+      </p>
+      <p className="mt-2 text-slate-300">{relationship.wording}</p>
+      <ul className="mt-3 space-y-3">
+        {relationship.evidence.map((item) => (
+          <li key={item.evidence_type}>
+            <strong>{item.evidence_type}</strong> · {item.confidence}
+            <p className="mt-1 text-slate-300">{item.wording}</p>
+            <p className="mt-1 text-xs text-slate-400">
+              {item.evidence.join(" ")}
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Observed {timestamp(item.observed_at)}
+            </p>
+          </li>
+        ))}
+      </ul>
+      {relationship.unknowns.length > 0 ? (
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-amber-200">
+          {relationship.unknowns.map((unknown) => (
+            <li key={unknown}>{unknown}</li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="mt-3 text-xs text-slate-400">
+        Coverage:{" "}
+        {relationship.coverage
+          .map(
+            (item) =>
+              `${item.source} (${item.complete ? "complete" : "incomplete"})`,
+          )
+          .join(", ")}
+      </p>
+    </article>
   );
 }
 

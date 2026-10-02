@@ -145,10 +145,17 @@ class WalletSettings(ConfigurationModel):
         return self
 
 
+RelationshipConfidence = Literal["LOW", "MEDIUM", "HIGH"]
+
+
 class ClusterSettings(ConfigurationModel):
     minimum_contributing_independent_wallets: int = Field(default=3, ge=2)
     window_seconds: int = Field(default=300, ge=1)
     minimum_average_wallet_score: float = Field(default=80, ge=0, le=100)
+    relationship_confidence_threshold: RelationshipConfidence = "MEDIUM"
+    synchronized_trade_window_seconds: int = Field(default=300, ge=1)
+    shared_token_history_minimum_percent: float = Field(default=50, gt=0, le=100)
+    transaction_pattern_similarity_minimum_percent: float = Field(default=60, gt=0, le=100)
 
 
 class SignalScoreWeights(ConfigurationModel):
