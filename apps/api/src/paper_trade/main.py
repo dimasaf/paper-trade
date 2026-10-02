@@ -8,7 +8,7 @@ from time import perf_counter
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from redis.asyncio import Redis
@@ -70,6 +70,18 @@ from paper_trade.wallet_copyability import (
     WalletCopyabilityService,
     WalletCopyabilityStore,
 )
+from paper_trade.wallet_scoring import (
+    LeaderboardSort,
+    PostgresWalletScoringStore,
+    RegistryState,
+    WalletLeaderboardEntry,
+    WalletRegistry,
+    WalletScore,
+    WalletScoreReassessment,
+    WalletScoreResult,
+    WalletScoringService,
+    WalletScoringStore,
+)
 
 http_logger = logging.getLogger("paper_trade.http")
 
@@ -90,6 +102,8 @@ def create_app(
     wallet_accounting_store: Optional[WalletAccountingStore] = None,
     wallet_behavior_store: Optional[WalletBehaviorStore] = None,
     wallet_copyability_store: Optional[WalletCopyabilityStore] = None,
+    wallet_scoring_store: Optional[WalletScoringStore] = None,
+    wallet_scoring_service: Optional[WalletScoringService] = None,
     early_buyer_source: Optional[EarlyBuyerSource] = None,
     historical_winner_discovery_store: Optional[HistoricalWinnerDiscoveryStore] = None,
 ) -> FastAPI:
@@ -136,6 +150,16 @@ def create_app(
                 application.state.research_configuration_store,
             )
         )
+        application.state.wallet_scoring_store = wallet_scoring_store or (
+            PostgresWalletScoringStore(engine)
+        )
+        application.state.wallet_scoring_service = wallet_scoring_service or WalletScoringService(
+            application.state.wallet_behavior_store,
+            application.state.wallet_copyability_store,
+            application.state.research_configuration_store,
+            application.state.wallet_scoring_store,
+            application.state.wallet_accounting_store,
+        )
         try:
             yield
         finally:
@@ -150,6 +174,8 @@ def create_app(
     app.state.wallet_accounting_store = wallet_accounting_store
     app.state.wallet_behavior_store = wallet_behavior_store
     app.state.wallet_copyability_store = wallet_copyability_store
+    app.state.wallet_scoring_store = wallet_scoring_store
+    app.state.wallet_scoring_service = wallet_scoring_service
     if wallet_accounting_store is not None and market_state_store is not None:
         if wallet_behavior_store is None:
             app.state.wallet_behavior_store = WalletBehaviorService(
@@ -162,6 +188,21 @@ def create_app(
                 StoredCopyabilityMarketPoolSource(market_state_store),
                 research_configuration_store,
             )
+    if (
+        wallet_scoring_service is None
+        and wallet_scoring_store is not None
+        and wallet_accounting_store is not None
+        and app.state.wallet_behavior_store is not None
+        and app.state.wallet_copyability_store is not None
+        and research_configuration_store is not None
+    ):
+        app.state.wallet_scoring_service = WalletScoringService(
+            app.state.wallet_behavior_store,
+            app.state.wallet_copyability_store,
+            research_configuration_store,
+            wallet_scoring_store,
+            wallet_accounting_store,
+        )
     app.state.early_buyer_source = early_buyer_source
     app.state.historical_winner_discovery_store = historical_winner_discovery_store
     app.add_middleware(
@@ -288,6 +329,12 @@ def create_app(
         if store is None:
             raise HTTPException(status_code=503, detail="Wallet copyability store is unavailable")
         return store
+
+    def wallet_scoring_service_or_unavailable() -> WalletScoringService:
+        service = app.state.wallet_scoring_service
+        if service is None:
+            raise HTTPException(status_code=503, detail="Wallet scoring is unavailable")
+        return service
 
     def historical_winner_service() -> HistoricalWinnerDiscoveryService:
         source = app.state.early_buyer_source
@@ -428,6 +475,60 @@ def create_app(
             )
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Wallet has no recorded history") from error
+
+    @app.post("/wallets/{address}/score", response_model=WalletScoreResult)
+    async def score_wallet(
+        address: str,
+        response: Response,
+        as_of: Optional[datetime] = None,
+    ) -> WalletScoreResult:
+        try:
+            result = await wallet_scoring_service_or_unavailable().score(
+                address, as_of or datetime.now(timezone.utc)
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Wallet has no recorded history") from error
+        if result.created:
+            response.status_code = 201
+        return result
+
+    @app.get("/wallets/{address}/score", response_model=WalletScore)
+    async def wallet_score_detail(
+        address: str,
+        as_of: Optional[datetime] = None,
+    ) -> WalletScore:
+        score = await wallet_scoring_service_or_unavailable().current_score(
+            address, as_of or datetime.now(timezone.utc)
+        )
+        if score is None:
+            raise HTTPException(status_code=404, detail="Wallet has no recorded score")
+        return score
+
+    @app.get("/wallets/{address}/registry", response_model=WalletRegistry)
+    async def wallet_registry_detail(address: str) -> WalletRegistry:
+        return await wallet_scoring_service_or_unavailable().registry(address)
+
+    @app.get("/wallets/scores", response_model=list[WalletLeaderboardEntry])
+    async def wallet_score_leaderboard(
+        as_of: Optional[datetime] = None,
+        sort: LeaderboardSort = "TOTAL_SCORE",
+        registry_state: Optional[RegistryState] = None,
+        limit: Optional[int] = Query(default=None, ge=1, le=1000),
+    ) -> list[WalletLeaderboardEntry]:
+        return await wallet_scoring_service_or_unavailable().leaderboard(
+            as_of or datetime.now(timezone.utc),
+            registry_state=registry_state,
+            sort=sort,
+            limit=limit,
+        )
+
+    @app.post("/wallet-scores/reassess", response_model=WalletScoreReassessment)
+    async def reassess_wallet_scores(
+        as_of: Optional[datetime] = None,
+    ) -> WalletScoreReassessment:
+        return await wallet_scoring_service_or_unavailable().reassess_all(
+            as_of or datetime.now(timezone.utc)
+        )
 
     @app.get("/health", response_model=HealthResponse)
     async def health(request: Request) -> HealthResponse:

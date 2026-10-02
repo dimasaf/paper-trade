@@ -241,3 +241,150 @@ export type WalletAccounting = {
   }>;
   warnings: string[];
 };
+
+export type RegistryState =
+  | "CANDIDATE"
+  | "WATCHLIST"
+  | "SMART_WALLET"
+  | "SUSPENDED"
+  | "REJECTED";
+
+export type ScoreComponentName =
+  | "profitability"
+  | "consistency"
+  | "copyability"
+  | "risk_quality"
+  | "entry_quality"
+  | "history_quality";
+
+export type LeaderboardSort =
+  | "TOTAL_SCORE"
+  | "RECENT_ROI"
+  | "LONG_TERM_ROI"
+  | "RECENT_PNL"
+  | "LONG_TERM_PNL";
+
+export type WalletScoreComponent = {
+  name: ScoreComponentName;
+  score: number | null;
+  weight: number;
+  weighted_points: number;
+  reasons: string[];
+  evidence: string[];
+  warnings: string[];
+  unknowns: string[];
+};
+
+export type WalletQualityPeriod = {
+  period: "30D" | "ALL_TIME";
+  starts_at: string | null;
+  total_pnl_usd: number | null;
+  realized_pnl_usd: number;
+  roi_percent: number | null;
+  win_rate_percent: number | null;
+  trade_count: number;
+  max_drawdown_usd: number;
+};
+
+export type WalletScore = {
+  address: string;
+  as_of: string;
+  configuration_id: string;
+  configuration_version: number;
+  total_score: number;
+  recommended_state: RegistryState;
+  components: WalletScoreComponent[];
+  quality: WalletQualityPeriod[];
+  reasons: string[];
+  warnings: string[];
+  evidence: string[];
+  unknowns: string[];
+  coverage: Array<{
+    source: string;
+    complete: boolean;
+    unknown_fields: string[];
+  }>;
+};
+
+export type WalletRegistryTransition = {
+  address: string;
+  version: number;
+  from_state: RegistryState;
+  to_state: RegistryState;
+  reason: string;
+  evidence: string[];
+  as_of: string;
+  configuration_version: number;
+  created_at: string;
+};
+
+export type WalletRegistry = {
+  address: string;
+  state: RegistryState;
+  transitions: WalletRegistryTransition[];
+};
+
+export type WalletLeaderboardEntry = {
+  address: string;
+  total_score: number;
+  recommended_state: RegistryState;
+  as_of: string;
+  configuration_version: number;
+  quality: WalletQualityPeriod[];
+  warnings: string[];
+};
+
+export async function fetchWalletScore(
+  address: string,
+  asOf: string,
+  signal?: AbortSignal,
+): Promise<WalletScore | null> {
+  const response = await fetch(
+    `${apiUrl}/wallets/${encodeURIComponent(address)}/score?as_of=${encodeURIComponent(asOf)}`,
+    { cache: "no-store", signal },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error("Wallet score request failed");
+  return (await response.json()) as WalletScore;
+}
+
+export async function fetchWalletRegistry(
+  address: string,
+  signal?: AbortSignal,
+): Promise<WalletRegistry | null> {
+  const response = await fetch(
+    `${apiUrl}/wallets/${encodeURIComponent(address)}/registry`,
+    { cache: "no-store", signal },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error("Wallet registry request failed");
+  return (await response.json()) as WalletRegistry;
+}
+
+export async function fetchWalletLeaderboard(
+  options: {
+    asOf: string;
+    sort: LeaderboardSort;
+    registryState: RegistryState | "ALL";
+    limit: number;
+  },
+  signal?: AbortSignal,
+): Promise<WalletLeaderboardEntry[]> {
+  const params = new URLSearchParams({
+    as_of: options.asOf,
+    sort: options.sort,
+    limit: String(options.limit),
+  });
+  if (options.registryState !== "ALL") {
+    params.set("registry_state", options.registryState);
+  }
+  const response = await fetch(
+    `${apiUrl}/wallets/scores?${params.toString()}`,
+    {
+      cache: "no-store",
+      signal,
+    },
+  );
+  if (!response.ok) throw new Error("Wallet leaderboard request failed");
+  return (await response.json()) as WalletLeaderboardEntry[];
+}

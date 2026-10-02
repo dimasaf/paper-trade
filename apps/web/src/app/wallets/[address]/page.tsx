@@ -6,9 +6,13 @@ import { type ReactNode, useEffect, useState } from "react";
 import SiteNav from "@/components/SiteNav";
 import {
   apiUrl,
+  fetchWalletRegistry,
+  fetchWalletScore,
   type WalletAccounting,
   type WalletBehavior,
   type WalletCopyability,
+  type WalletRegistry,
+  type WalletScore,
 } from "@/lib/wallets";
 
 function amount(value: number | null): string {
@@ -27,6 +31,8 @@ export default function WalletDetailPage() {
   const [copyability, setCopyability] = useState<WalletCopyability | null>(
     null,
   );
+  const [score, setScore] = useState<WalletScore | null>(null);
+  const [registry, setRegistry] = useState<WalletRegistry | null>(null);
   const [asOf] = useState(() => new Date().toISOString());
   const [error, setError] = useState<string | null>(null);
 
@@ -94,6 +100,36 @@ export default function WalletDetailPage() {
     return () => controller.abort();
   }, [address, asOf]);
 
+  useEffect(() => {
+    if (!address) return;
+    const controller = new AbortController();
+    async function loadScore() {
+      try {
+        setScore(await fetchWalletScore(address, asOf, controller.signal));
+      } catch (reason) {
+        if (!(reason instanceof DOMException && reason.name === "AbortError"))
+          setScore(null);
+      }
+    }
+    void loadScore();
+    return () => controller.abort();
+  }, [address, asOf]);
+
+  useEffect(() => {
+    if (!address) return;
+    const controller = new AbortController();
+    async function loadRegistry() {
+      try {
+        setRegistry(await fetchWalletRegistry(address, controller.signal));
+      } catch (reason) {
+        if (!(reason instanceof DOMException && reason.name === "AbortError"))
+          setRegistry(null);
+      }
+    }
+    void loadRegistry();
+    return () => controller.abort();
+  }, [address]);
+
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-6 py-14 sm:px-10">
       <SiteNav />
@@ -145,6 +181,7 @@ export default function WalletDetailPage() {
           {copyability ? (
             <CopyabilitySummary copyability={copyability} />
           ) : null}
+          {score ? <ScoreSummary score={score} registry={registry} /> : null}
 
           <section className="grid gap-4 md:grid-cols-2">
             <PnlCard
@@ -635,6 +672,168 @@ function CopyabilitySummary({
         </table>
       </div>
     </section>
+  );
+}
+
+function ScoreSummary({
+  score,
+  registry,
+}: {
+  score: WalletScore;
+  registry: WalletRegistry | null;
+}) {
+  return (
+    <section className="mb-8 space-y-6" data-testid="wallet-score">
+      <header>
+        <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-300">
+          Smart Wallet Score
+        </p>
+        <h2 className="mt-2 text-2xl font-semibold">
+          {score.total_score.toFixed(2)} / 100 · {score.recommended_state}
+        </h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Configuration v{score.configuration_version} · as of{" "}
+          {timestamp(score.as_of)}
+        </p>
+      </header>
+
+      {score.warnings.length > 0 ? (
+        <div
+          role="alert"
+          data-testid="wallet-score-warnings"
+          className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100"
+        >
+          <strong>Score warnings</strong>
+          <ul className="mt-2 list-disc pl-5">
+            {score.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div
+        data-testid="wallet-score-reasons"
+        className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5 text-sm text-slate-300"
+      >
+        <h3 className="font-semibold text-white">Why this score</h3>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          {score.reasons.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        </ul>
+        {score.unknowns.length > 0 ? (
+          <div className="mt-3">
+            <h4 className="font-semibold text-amber-200">
+              Unknown evidence never raises the score
+            </h4>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-200">
+              {score.unknowns.map((unknown) => (
+                <li key={unknown}>{unknown}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        <div
+          data-testid="wallet-score-coverage"
+          className="mt-3 text-xs text-slate-400"
+        >
+          <h4 className="font-semibold text-slate-300">Evidence coverage</h4>
+          {score.coverage.map((item) => (
+            <p key={item.source}>
+              {item.source} · {item.complete ? "complete" : "incomplete"} ·{" "}
+              {item.unknown_fields.join(", ") || "no declared unknown fields"}
+            </p>
+          ))}
+        </div>
+      </div>
+
+      <div
+        data-testid="wallet-score-components"
+        className="grid gap-4 lg:grid-cols-2"
+      >
+        {score.components.map((item) => (
+          <article
+            key={item.name}
+            className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5 text-sm"
+          >
+            <h3 className="font-semibold text-white">
+              {item.name.replace(/_/g, " ")}
+            </h3>
+            <p className="mt-1 text-slate-300">
+              {item.score === null ? "UNKNOWN" : number(item.score)} / 100 ·
+              weight {number(item.weight)} · {number(item.weighted_points)}
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-300">
+              {item.reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-slate-400">
+              Evidence: {item.evidence.join(" ")}
+            </p>
+            {item.warnings.length > 0 ? (
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-200">
+                {item.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            ) : null}
+            {item.unknowns.length > 0 ? (
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-200">
+                {item.unknowns.map((unknown) => (
+                  <li key={unknown}>{unknown}</li>
+                ))}
+              </ul>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      {registry ? <RegistryHistory registry={registry} /> : null}
+    </section>
+  );
+}
+
+function RegistryHistory({ registry }: { registry: WalletRegistry }) {
+  return (
+    <div
+      data-testid="wallet-registry"
+      className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5 text-sm text-slate-300"
+    >
+      <h3 className="font-semibold text-white">
+        Registry history · current state {registry.state}
+      </h3>
+      {registry.transitions.length === 0 ? (
+        <p className="mt-2 text-slate-400">
+          No transition is recorded, so the Wallet remains a CANDIDATE.
+        </p>
+      ) : (
+        <ol
+          data-testid="wallet-registry-transitions"
+          className="mt-3 space-y-3"
+        >
+          {registry.transitions.map((transition) => (
+            <li
+              key={transition.version}
+              className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
+            >
+              <p className="font-semibold text-white">
+                {transition.from_state} → {transition.to_state}
+              </p>
+              <p className="mt-1">{transition.reason}</p>
+              <p className="mt-1 text-xs text-slate-400">
+                {timestamp(transition.as_of)} · configuration v
+                {transition.configuration_version}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Evidence: {transition.evidence.join(" ")}
+              </p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }
 

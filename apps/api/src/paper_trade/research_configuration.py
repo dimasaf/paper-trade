@@ -105,6 +105,10 @@ class WalletScoreWeights(ConfigurationModel):
 class WalletSettings(ConfigurationModel):
     minimum_score: float = Field(default=80, ge=0, le=100)
     minimum_trades: int = Field(default=20, ge=1)
+    suspension_score: float = Field(default=45, ge=0, le=100)
+    rejection_score: float = Field(default=20, ge=0, le=100)
+    profitability_roi_target_percent: float = Field(default=50, gt=0)
+    risk_flag_penalty: float = Field(default=10, ge=0, le=100)
     copyability_delays_ms: list[PositiveInteger] = Field(
         default_factory=lambda: [500, 1000, 2000, 3000, 5000, 10000],
         min_length=1,
@@ -130,6 +134,15 @@ class WalletSettings(ConfigurationModel):
         if sizes != sorted(sizes):
             raise ValueError("copyability_sizes_sol must be increasing")
         return sizes
+
+    @model_validator(mode="after")
+    def validate_score_thresholds(self) -> "WalletSettings":
+        if not (self.rejection_score <= self.suspension_score <= self.minimum_score):
+            raise ValueError(
+                "wallet score thresholds must not decrease: rejection_score <= "
+                "suspension_score <= minimum_score"
+            )
+        return self
 
 
 class ClusterSettings(ConfigurationModel):

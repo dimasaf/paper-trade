@@ -254,6 +254,9 @@ class WalletAccountingStore(Protocol):
     async def accounting(self, address: str, as_of: datetime) -> WalletAccounting:
         """Return the requested Wallet's deterministic point-in-time accounting."""
 
+    async def list_wallets(self) -> list[str]:
+        """Return every Wallet address with recorded activity, in deterministic order."""
+
 
 @runtime_checkable
 class WalletAccountingRecordingStore(WalletAccountingStore, Protocol):
@@ -531,11 +534,17 @@ class WalletAccountingService:
 class InMemoryWalletAccountingStore:
     """Deterministic Wallet-detail store used by HTTP and fixture tests."""
 
-    def __init__(self, service: WalletAccountingService) -> None:
+    def __init__(
+        self, service: WalletAccountingService, addresses: Sequence[str] = ()
+    ) -> None:
         self._service = service
+        self._addresses = sorted(set(addresses))
 
     async def accounting(self, address: str, as_of: datetime) -> WalletAccounting:
         return await self._service.accounting(address, as_of)
+
+    async def list_wallets(self) -> list[str]:
+        return list(self._addresses)
 
 
 class InMemoryRecordedWalletAccountingStore:
@@ -593,6 +602,9 @@ class InMemoryRecordedWalletAccountingStore:
             prices=list(self._prices.values()),
         )
         return await service.accounting(address, as_of)
+
+    async def list_wallets(self) -> list[str]:
+        return sorted(self._activities)
 
 
 class PostgresWalletAccountingStore:
@@ -773,6 +785,19 @@ class PostgresWalletAccountingStore:
             prices=prices,
         )
         return await service.accounting(address, as_of)
+
+    async def list_wallets(self) -> list[str]:
+        async with self._engine.connect() as connection:
+            result = await connection.execute(
+                text(
+                    """
+                    SELECT DISTINCT wallet_address
+                    FROM wallet_accounting_activities
+                    ORDER BY wallet_address
+                    """
+                )
+            )
+            return [str(row[0]) for row in result]
 
 
 def _json_document(model: WalletAccountingModel) -> str:
