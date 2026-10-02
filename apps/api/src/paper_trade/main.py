@@ -82,6 +82,16 @@ from paper_trade.wallet_behavior import (
     WalletBehaviorService,
     WalletBehaviorStore,
 )
+from paper_trade.wallet_clusters import (
+    ClusterActivitySource,
+    ClusterDetection,
+    ClusterDetectorService,
+    ContributingIndependentCalculator,
+    PostgresWalletClusterStore,
+    StoredWalletCluster,
+    WalletClusterDetail,
+    WalletClusterStore,
+)
 from paper_trade.wallet_copyability import (
     StoredCopyabilityMarketPoolSource,
     WalletCopyability,
@@ -164,6 +174,10 @@ def create_app(
     wallet_funding_source: Optional[WalletFundingSource] = None,
     wallet_relationship_store: Optional[WalletRelationshipStore] = None,
     wallet_relationship_service: Optional[WalletRelationshipService] = None,
+    cluster_activity_source: Optional[ClusterActivitySource] = None,
+    cluster_relationship_calculator: Optional[ContributingIndependentCalculator] = None,
+    wallet_cluster_store: Optional[WalletClusterStore] = None,
+    cluster_detector_service: Optional[ClusterDetectorService] = None,
     realtime_source: Optional[RealtimeSource] = None,
     smart_wallet_source: Optional[SmartWalletSource] = None,
     realtime_tracking_store: Optional[RealtimeTrackingStore] = None,
@@ -237,6 +251,20 @@ def create_app(
                 application.state.wallet_relationship_store,
             )
         )
+        application.state.wallet_cluster_store = wallet_cluster_store or (
+            PostgresWalletClusterStore(engine)
+        )
+        application.state.cluster_detector_service = cluster_detector_service or (
+            None
+            if cluster_activity_source is None
+            else ClusterDetectorService(
+                cluster_activity_source,
+                cluster_relationship_calculator
+                or application.state.wallet_relationship_service,
+                application.state.research_configuration_store,
+                application.state.wallet_cluster_store,
+            )
+        )
         application.state.realtime_tracking_store = realtime_tracking_store or (
             PostgresRealtimeTrackingStore(engine)
         )
@@ -282,6 +310,10 @@ def create_app(
     app.state.wallet_funding_source = wallet_funding_source
     app.state.wallet_relationship_store = wallet_relationship_store
     app.state.wallet_relationship_service = wallet_relationship_service
+    app.state.cluster_activity_source = cluster_activity_source
+    app.state.cluster_relationship_calculator = cluster_relationship_calculator
+    app.state.wallet_cluster_store = wallet_cluster_store
+    app.state.cluster_detector_service = cluster_detector_service
     app.state.realtime_source = realtime_source
     app.state.smart_wallet_source = smart_wallet_source
     app.state.realtime_tracking_store = realtime_tracking_store
@@ -336,6 +368,22 @@ def create_app(
             wallet_funding_source,
             research_configuration_store,
             wallet_relationship_store,
+        )
+    cluster_calculator = (
+        cluster_relationship_calculator or app.state.wallet_relationship_service
+    )
+    if (
+        cluster_detector_service is None
+        and cluster_activity_source is not None
+        and wallet_cluster_store is not None
+        and research_configuration_store is not None
+        and cluster_calculator is not None
+    ):
+        app.state.cluster_detector_service = ClusterDetectorService(
+            cluster_activity_source,
+            cluster_calculator,
+            research_configuration_store,
+            wallet_cluster_store,
         )
     app.state.early_buyer_source = early_buyer_source
     app.state.historical_winner_discovery_store = historical_winner_discovery_store
@@ -486,6 +534,12 @@ def create_app(
         service = app.state.wallet_relationship_service
         if service is None:
             raise HTTPException(status_code=503, detail="Wallet relationships are unavailable")
+        return service
+
+    def cluster_detector_service_or_unavailable() -> ClusterDetectorService:
+        service = app.state.cluster_detector_service
+        if service is None:
+            raise HTTPException(status_code=503, detail="Cluster detection is unavailable")
         return service
 
     def historical_winner_service() -> HistoricalWinnerDiscoveryService:
@@ -718,6 +772,53 @@ def create_app(
         if result.created:
             response.status_code = 201
         return result
+
+    @app.post("/clusters/detections", response_model=ClusterDetection, status_code=201)
+    async def detect_clusters(as_of: Optional[datetime] = None) -> ClusterDetection:
+        return await cluster_detector_service_or_unavailable().detect(
+            as_of or datetime.now(timezone.utc)
+        )
+
+    @app.get("/clusters", response_model=list[StoredWalletCluster])
+    async def live_clusters(
+        as_of: Optional[datetime] = None,
+    ) -> list[StoredWalletCluster]:
+        return await cluster_detector_service_or_unavailable().live(
+            as_of or datetime.now(timezone.utc)
+        )
+
+    @app.get("/clusters/{token_address}", response_model=WalletClusterDetail)
+    async def wallet_cluster_detail(
+        token_address: str,
+        as_of: Optional[datetime] = None,
+    ) -> WalletClusterDetail:
+        detail = await cluster_detector_service_or_unavailable().detail(
+            token_address, as_of or datetime.now(timezone.utc)
+        )
+        if detail is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Token {token_address} has no recorded Cluster",
+            )
+        return detail
+
+    @app.get(
+        "/clusters/{token_address}/history",
+        response_model=list[StoredWalletCluster],
+    )
+    async def wallet_cluster_history(
+        token_address: str,
+        as_of: Optional[datetime] = None,
+    ) -> list[StoredWalletCluster]:
+        detail = await cluster_detector_service_or_unavailable().detail(
+            token_address, as_of or datetime.now(timezone.utc)
+        )
+        if detail is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Token {token_address} has no recorded Cluster",
+            )
+        return detail.history
 
     @app.get("/wallets/scores", response_model=list[WalletLeaderboardEntry])
     async def wallet_score_leaderboard(

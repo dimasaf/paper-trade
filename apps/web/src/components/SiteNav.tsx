@@ -8,6 +8,7 @@ const links = [
   { href: "/tokens", label: "Tokens" },
   { href: "/wallets", label: "Wallets" },
   { href: "/realtime", label: "Realtime" },
+  { href: "/clusters", label: "Clusters" },
   { href: "/discovery", label: "Discovery" },
   { href: "/settings", label: "Settings" },
 ] as const;
