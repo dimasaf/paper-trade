@@ -457,7 +457,7 @@ test("running Docker stack persists recorded Wallet accounting for the detail jo
   await expect(page.getByTestId("wallet-coverage")).toContainText("HELIUS");
 });
 
-test("Wallet detail retains leader ROI when every follower outcome is rejected", async ({
+test("Wallet detail reports leader ROI only when a follower outcome filled", async ({
   page,
 }) => {
   await page.route("**/wallets/**/accounting*", async (route) => {
@@ -469,7 +469,9 @@ test("Wallet detail retains leader ROI when every follower outcome is rejected",
 
   await page.goto(`/wallets/${walletAddress}`);
 
-  await expect(page.getByTestId("wallet-copyability")).toContainText("38.10%");
+  await expect(page.getByTestId("wallet-copyability")).not.toContainText(
+    "38.10%",
+  );
   await expect(page.getByTestId("wallet-copyability")).toContainText("UNKNOWN");
 });
 
@@ -529,5 +531,8 @@ test("Wallet detail shows FIFO accounting, contamination, failed and unknown his
   await expect(page.getByTestId("wallet-copyability")).toContainText("500 ms");
   await expect(page.getByTestId("wallet-copyability")).toContainText(
     "CONSTANT_PRODUCT",
+  );
+  await expect(page.getByTestId("copyability-coverage")).toContainText(
+    "historical_pool_state",
   );
 });

@@ -22,6 +22,7 @@ from paper_trade.wallet_copyability import (
     CopyabilityPoolCoverage,
     RecordedCopyabilityMarketPoolSource,
     RecordedMarketPool,
+    StoredCopyabilityMarketPoolSource,
     WalletCopyabilityService,
 )
 
@@ -262,3 +263,29 @@ def test_wallet_copyability_endpoint_composes_stored_market_evidence() -> None:
     assert response.status_code == 200
     assert response.json()["configuration_version"] == 1
     assert response.json()["coverage"]["unknown_fields"] == ["market_pool_state"]
+
+
+@pytest.mark.asyncio
+async def test_pool_coverage_is_token_specific_and_not_unioned_across_tokens() -> None:
+    other = "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump"
+
+    result = await pool_source().market_pools([TOKEN, other], at("2026-09-28T10:00:00Z"))
+
+    assert "market_pool_state" not in result.token_coverage[TOKEN].unknown_fields
+    assert "market_pool_state" in result.token_coverage[other].unknown_fields
+    assert any(other in warning for warning in result.token_coverage[other].warnings)
+
+
+@pytest.mark.asyncio
+async def test_stored_pool_coverage_reports_each_tokens_own_gaps() -> None:
+    other = "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump"
+    store = InMemoryMarketStateStore()
+
+    result = await StoredCopyabilityMarketPoolSource(store).market_pools(
+        [TOKEN, other], at("2026-09-28T10:00:00Z")
+    )
+
+    assert result.coverage.complete is False
+    assert result.token_coverage[TOKEN].complete is False
+    assert result.token_coverage[other].complete is False
+    assert "market_pool_state" in result.token_coverage[other].unknown_fields

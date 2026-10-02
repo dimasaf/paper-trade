@@ -152,7 +152,12 @@ export type WalletCopyability = {
       requested_at: string;
       pool_address: string | null;
       venue: string | null;
-      pool_model: "CONSTANT_PRODUCT" | "DLMM" | "CONCENTRATED" | "UNKNOWN" | null;
+      pool_model:
+        | "CONSTANT_PRODUCT"
+        | "DLMM"
+        | "CONCENTRATED"
+        | "UNKNOWN"
+        | null;
       snapshot_at: string | null;
       source_evidence: string[];
       status: "SELECTED" | "UNKNOWN" | "STALE";

@@ -27,7 +27,7 @@ PoolModel = Literal["CONSTANT_PRODUCT", "DLMM", "CONCENTRATED", "UNKNOWN"]
 class CopyabilityPoolCoverage(WalletAccountingModel):
     """Declared coverage for recorded market-pool snapshots."""
 
-    provider: Literal["RECORDED_MARKET_POOL", "STORED_MARKET_STATE"]
+    provider: str = Field(min_length=1)
     requested_as_of: datetime
     as_of_start: datetime
     as_of_end: datetime
@@ -59,6 +59,7 @@ class RecordedMarketPool(WalletAccountingModel):
     sol_reserve: Optional[float] = Field(default=None, gt=0)
     token_reserve: Optional[float] = Field(default=None, gt=0)
     evidence: list[str] = Field(min_length=1)
+    coverage: Optional[CopyabilityPoolCoverage] = None
 
     @model_validator(mode="after")
     def validate_reserves(self) -> "RecordedMarketPool":
@@ -71,9 +72,51 @@ class RecordedMarketPool(WalletAccountingModel):
         return self
 
 
+def _pool_coverage(
+    *,
+    provider: str,
+    scope: Optional[str],
+    coverages: Sequence[CopyabilityPoolCoverage],
+    pools: Sequence[RecordedMarketPool],
+    as_of: datetime,
+) -> CopyabilityPoolCoverage:
+    """Summarize one Token's coverage so scenarios never inherit another's gaps."""
+    unknown_fields = {field for coverage in coverages for field in coverage.unknown_fields}
+    warnings = [warning for coverage in coverages for warning in coverage.warnings]
+    if not pools:
+        unknown_fields.add("market_pool_state")
+        if scope is not None:
+            warnings.append(
+                f"{scope} has no recorded market-pool state at the requested as-of time."
+            )
+    else:
+        if not any(pool.sol_reserve for pool in pools):
+            unknown_fields.add("pool_reserves")
+        if any(pool.pool_model == "UNKNOWN" for pool in pools):
+            unknown_fields.add("pool_model")
+    if not warnings and not pools:
+        warnings = ["No recorded pool state is available."]
+    return CopyabilityPoolCoverage(
+        provider=provider,
+        requested_as_of=as_of,
+        as_of_start=min((coverage.as_of_start for coverage in coverages), default=as_of),
+        as_of_end=max((coverage.as_of_end for coverage in coverages), default=as_of),
+        complete=(
+            bool(coverages)
+            and all(coverage.complete for coverage in coverages)
+            and bool(pools)
+            and all(pool.pool_model != "UNKNOWN" for pool in pools)
+        ),
+        freshness_seconds=min((coverage.freshness_seconds for coverage in coverages), default=0),
+        unknown_fields=sorted(unknown_fields),
+        warnings=list(dict.fromkeys(warnings)),
+    )
+
+
 class CopyabilityMarketPoolResult(WalletAccountingModel):
     pools: list[RecordedMarketPool]
     coverage: CopyabilityPoolCoverage
+    token_coverage: dict[str, CopyabilityPoolCoverage] = Field(default_factory=dict)
 
 
 class CopyabilityMarketPoolSource(Protocol):
@@ -98,16 +141,27 @@ class RecordedCopyabilityMarketPoolSource:
         self, token_addresses: Sequence[str], as_of: datetime
     ) -> CopyabilityMarketPoolResult:
         requested = set(token_addresses)
+        pools = sorted(
+            [
+                pool
+                for pool in self._pools
+                if pool.token_address in requested and pool.observed_at <= as_of
+            ],
+            key=lambda pool: (pool.token_address, pool.observed_at, pool.pool_address),
+        )
         return CopyabilityMarketPoolResult(
-            pools=sorted(
-                [
-                    pool
-                    for pool in self._pools
-                    if pool.token_address in requested and pool.observed_at <= as_of
-                ],
-                key=lambda pool: (pool.token_address, pool.observed_at, pool.pool_address),
-            ),
+            pools=pools,
             coverage=self._coverage.model_copy(update={"requested_as_of": as_of}),
+            token_coverage={
+                address: _pool_coverage(
+                    provider=self._coverage.provider,
+                    scope=address,
+                    coverages=[self._coverage],
+                    pools=[pool for pool in pools if pool.token_address == address],
+                    as_of=as_of,
+                )
+                for address in sorted(requested)
+            },
         )
 
 
@@ -123,6 +177,10 @@ class StoredCopyabilityMarketPoolSource:
         observations = []
         for address in sorted(token_addresses):
             observations.extend(await self._store.observations(address, as_of))
+        coverages = [
+            CopyabilityPoolCoverage.model_validate(observation.coverage.model_dump())
+            for observation in observations
+        ]
         pools = [
             RecordedMarketPool(
                 token_address=observation.address,
@@ -142,41 +200,29 @@ class StoredCopyabilityMarketPoolSource:
             for pool in observation.pools
             if pool.sol_usd_price is not None
         ]
-        coverages = [observation.coverage for observation in observations]
-        unknown_fields = sorted(
-            {field for coverage in coverages for field in coverage.unknown_fields}
-            | ({"market_pool_state"} if not pools else set())
-            | (
-                {"pool_reserves"}
-                if pools and not any(pool.sol_reserve for pool in pools)
-                else set()
-            )
-            | (
-                {"pool_model"}
-                if pools and any(pool.pool_model == "UNKNOWN" for pool in pools)
-                else set()
-            )
-        )
         return CopyabilityMarketPoolResult(
             pools=pools,
-            coverage=CopyabilityPoolCoverage(
+            coverage=_pool_coverage(
                 provider="STORED_MARKET_STATE",
-                requested_as_of=as_of,
-                as_of_start=min((coverage.as_of_start for coverage in coverages), default=as_of),
-                as_of_end=max((coverage.as_of_end for coverage in coverages), default=as_of),
-                complete=(
-                    bool(coverages)
-                    and all(coverage.complete for coverage in coverages)
-                    and bool(pools)
-                    and all(pool.pool_model != "UNKNOWN" for pool in pools)
-                ),
-                freshness_seconds=min(
-                    (coverage.freshness_seconds for coverage in coverages), default=0
-                ),
-                unknown_fields=unknown_fields,
-                warnings=[warning for coverage in coverages for warning in coverage.warnings]
-                or (["No recorded pool state is available."] if not pools else []),
+                scope=None,
+                coverages=coverages,
+                pools=pools,
+                as_of=as_of,
             ),
+            token_coverage={
+                address: _pool_coverage(
+                    provider="STORED_MARKET_STATE",
+                    scope=address,
+                    coverages=[
+                        coverage
+                        for observation, coverage in zip(observations, coverages)
+                        if observation.address == address
+                    ],
+                    pools=[pool for pool in pools if pool.token_address == address],
+                    as_of=as_of,
+                )
+                for address in sorted(token_addresses)
+            },
         )
 
 
@@ -191,6 +237,7 @@ class CopyabilityPoolSelection(WalletAccountingModel):
     snapshot_at: Optional[datetime] = None
     source_evidence: list[str] = Field(default_factory=list)
     status: Literal["SELECTED", "UNKNOWN", "STALE"]
+    coverage: Optional[CopyabilityPoolCoverage] = None
     warning: Optional[str] = None
 
 
@@ -361,15 +408,16 @@ class WalletCopyabilityService:
         exit_requested = close.exit.chain_time + timedelta(milliseconds=delay_ms)
         leader_roi = (close.proceeds_usd - close.cost_usd) / close.cost_usd * 100
         pools = [pool for pool in pool_result.pools if pool.token_address == close.token_address]
+        token_coverage = pool_result.token_coverage.get(close.token_address, pool_result.coverage)
         entry, entry_selection = self._select_pool(
-            pools, close.entry.venue, entry_requested, "BUY", pool_result.coverage
+            pools, close.entry.venue, entry_requested, "BUY", token_coverage
         )
         exit, exit_selection = self._select_pool(
             pools,
             close.exit.venue,
             exit_requested,
             "SELL",
-            pool_result.coverage,
+            token_coverage,
         )
         coverage = self._scenario_coverage(
             close.token_address,
@@ -377,7 +425,7 @@ class WalletCopyabilityService:
             exit_requested,
             entry_selection,
             exit_selection,
-            pool_result.coverage,
+            token_coverage,
         )
         selections = [entry_selection, exit_selection]
         if entry is not None and entry.sol_reserve is None:

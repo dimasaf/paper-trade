@@ -500,7 +500,7 @@ function CopyabilitySummary({
         delay,
         size,
         outcomes,
-        leader: average(outcomes.map((outcome) => outcome.leader_roi_percent)),
+        leader: average(filled.map((outcome) => outcome.leader_roi_percent)),
         follower: average(
           filled.map((outcome) => outcome.follower_roi_percent as number),
         ),
@@ -508,6 +508,11 @@ function CopyabilitySummary({
           filled.map((outcome) => outcome.copy_decay_percent as number),
         ),
         rejected: outcomes.length - filled.length,
+        coverageUnknowns: [
+          ...new Set(
+            outcomes.flatMap((outcome) => outcome.coverage.unknown_fields),
+          ),
+        ],
         models: [...new Set(filled.map((outcome) => outcome.entry_fill?.model))]
           .filter(Boolean)
           .join(", "),
@@ -544,6 +549,20 @@ function CopyabilitySummary({
           </ul>
         </div>
       ) : null}
+      <div
+        data-testid="copyability-coverage"
+        className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300"
+      >
+        <strong>
+          Pool coverage · {copyability.coverage.provider} ·{" "}
+          {copyability.coverage.complete ? "complete" : "incomplete"}
+        </strong>
+        {copyability.coverage.unknown_fields.length > 0 ? (
+          <p className="mt-1 text-xs text-slate-400">
+            UNKNOWN: {copyability.coverage.unknown_fields.join(", ")}
+          </p>
+        ) : null}
+      </div>
       <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-800">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-950/60 text-slate-400">
@@ -553,6 +572,7 @@ function CopyabilitySummary({
               <th className="p-3">Leader ROI</th>
               <th className="p-3">Follower ROI</th>
               <th className="p-3">Copy Decay</th>
+              <th className="p-3">Coverage</th>
               <th className="p-3">Fill evidence</th>
             </tr>
           </thead>
@@ -568,7 +588,13 @@ function CopyabilitySummary({
                 <td className="p-3">{percent(scenario.follower)}</td>
                 <td className="p-3">{percent(scenario.decay)}</td>
                 <td className="p-3 text-xs text-slate-400">
-                  {scenario.models || "No fill"} · {scenario.confidence || "UNKNOWN"}
+                  {scenario.coverageUnknowns.length
+                    ? scenario.coverageUnknowns.join(", ")
+                    : "complete"}
+                </td>
+                <td className="p-3 text-xs text-slate-400">
+                  {scenario.models || "No fill"} ·{" "}
+                  {scenario.confidence || "UNKNOWN"}
                   {scenario.rejected ? ` · ${scenario.rejected} rejected` : ""}
                   <details className="mt-2 text-slate-300">
                     <summary>Pool evidence</summary>
@@ -591,7 +617,10 @@ function CopyabilitySummary({
                           </p>
                         ))}
                         {[outcome.entry_fill, outcome.exit_fill]
-                          .filter((fill): fill is NonNullable<typeof fill> => fill !== null)
+                          .filter(
+                            (fill): fill is NonNullable<typeof fill> =>
+                              fill !== null,
+                          )
                           .flatMap((fill) => fill.fallback_assumptions)
                           .map((assumption) => (
                             <p key={assumption}>Assumption: {assumption}</p>
